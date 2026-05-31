@@ -12,7 +12,7 @@ func (store *Store) execTx(ctx context.Context, fn func(*Queries) error) error {
 	tx, err := store.db.BeginTx(ctx, pgx.TxOptions{})
 
 	if err != nil {
-		return nil
+		return err
 	}
 
 	q := New(tx)
@@ -24,4 +24,9 @@ func (store *Store) execTx(ctx context.Context, fn func(*Queries) error) error {
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+// ExecTx executes fn inside a database transaction.
+func (store *Store) ExecTx(ctx context.Context, fn func(*Queries) error) error {
+	return store.execTx(ctx, fn)
 }
