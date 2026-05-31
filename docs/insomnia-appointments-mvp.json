@@ -1,0 +1,94 @@
+{
+  "_type": "export",
+  "__export_format": 4,
+  "__export_date": "2026-05-31T00:00:00.000Z",
+  "__export_source": "codex",
+  "resources": [
+    {
+      "_id": "wrk_appointments_mvp",
+      "_type": "workspace",
+      "name": "Appointments MVP API",
+      "description": "Fiber appointment scheduling SaaS API"
+    },
+    {
+      "_id": "env_appointments_base",
+      "_type": "environment",
+      "parentId": "wrk_appointments_mvp",
+      "name": "Base Environment",
+      "data": {
+        "base_url": "http://localhost:8040",
+        "username": "dev_local",
+        "password": "devpass123",
+        "full_name": "Dev Local",
+        "access_token": "",
+        "refresh_token": "",
+        "tenant_id": "",
+        "provider_id": "",
+        "service_id": "",
+        "customer_id": "",
+        "slot_id": "",
+        "appointment_id": "",
+        "conversation_id": "",
+        "tenant_channel_external_id": "evolution-local"
+      }
+    },
+    { "_id": "fld_auth", "_type": "request_group", "parentId": "wrk_appointments_mvp", "name": "Auth" },
+    { "_id": "fld_tenants", "_type": "request_group", "parentId": "wrk_appointments_mvp", "name": "Tenants" },
+    { "_id": "fld_providers", "_type": "request_group", "parentId": "wrk_appointments_mvp", "name": "Providers" },
+    { "_id": "fld_services", "_type": "request_group", "parentId": "wrk_appointments_mvp", "name": "Services" },
+    { "_id": "fld_customers", "_type": "request_group", "parentId": "wrk_appointments_mvp", "name": "Customers" },
+    { "_id": "fld_scheduling", "_type": "request_group", "parentId": "wrk_appointments_mvp", "name": "Scheduling" },
+    { "_id": "fld_appointments", "_type": "request_group", "parentId": "wrk_appointments_mvp", "name": "Appointments" },
+    { "_id": "fld_conversations", "_type": "request_group", "parentId": "wrk_appointments_mvp", "name": "Conversations" },
+    { "_id": "fld_webhooks", "_type": "request_group", "parentId": "wrk_appointments_mvp", "name": "Webhooks" },
+
+    { "_id": "req_register", "_type": "request", "parentId": "fld_auth", "name": "Register dev user", "method": "POST", "url": "{{ _.base_url }}/register", "body": { "mimeType": "application/json", "text": "{\"username\":\"{{ _.username }}\",\"password\":\"{{ _.password }}\",\"full_name\":\"{{ _.full_name }}\"}" }, "headers": [{ "name": "Content-Type", "value": "application/json" }] },
+    { "_id": "req_login", "_type": "request", "parentId": "fld_auth", "name": "Login", "method": "POST", "url": "{{ _.base_url }}/login", "body": { "mimeType": "application/json", "text": "{\"username\":\"{{ _.username }}\",\"password\":\"{{ _.password }}\"}" }, "headers": [{ "name": "Content-Type", "value": "application/json" }] },
+    { "_id": "req_renew", "_type": "request", "parentId": "fld_auth", "name": "Renew access token", "method": "POST", "url": "{{ _.base_url }}/tokens/renew_access", "body": { "mimeType": "application/json", "text": "{\"refresh_token\":\"{{ _.refresh_token }}\"}" }, "headers": [{ "name": "Content-Type", "value": "application/json" }] },
+    { "_id": "req_user_info", "_type": "request", "parentId": "fld_auth", "name": "Get user info", "method": "GET", "url": "{{ _.base_url }}/user/info", "headers": [{ "name": "Authorization", "value": "Bearer {{ _.access_token }}" }] },
+    { "_id": "req_user_update", "_type": "request", "parentId": "fld_auth", "name": "Update user", "method": "PUT", "url": "{{ _.base_url }}/user/update", "body": { "mimeType": "application/json", "text": "{\"full_name\":\"{{ _.full_name }} Updated\"}" }, "headers": [{ "name": "Authorization", "value": "Bearer {{ _.access_token }}" }, { "name": "Content-Type", "value": "application/json" }] },
+    { "_id": "req_password", "_type": "request", "parentId": "fld_auth", "name": "Change password", "method": "POST", "url": "{{ _.base_url }}/user/password_change", "body": { "mimeType": "application/json", "text": "{\"password\":\"{{ _.password }}\"}" }, "headers": [{ "name": "Authorization", "value": "Bearer {{ _.access_token }}" }, { "name": "Content-Type", "value": "application/json" }] },
+
+    { "_id": "req_tenants_list", "_type": "request", "parentId": "fld_tenants", "name": "List tenants", "method": "GET", "url": "{{ _.base_url }}/api/v1/tenants?page=1&page_size=20", "headers": [{ "name": "Authorization", "value": "Bearer {{ _.access_token }}" }] },
+    { "_id": "req_tenants_create", "_type": "request", "parentId": "fld_tenants", "name": "Create tenant", "method": "POST", "url": "{{ _.base_url }}/api/v1/tenants", "body": { "mimeType": "application/json", "text": "{\"name\":\"Local Barber Shop\",\"timezone\":\"America/Argentina/Buenos_Aires\"}" }, "headers": [{ "name": "Authorization", "value": "Bearer {{ _.access_token }}" }, { "name": "Content-Type", "value": "application/json" }] },
+    { "_id": "req_tenants_get", "_type": "request", "parentId": "fld_tenants", "name": "Get tenant", "method": "GET", "url": "{{ _.base_url }}/api/v1/tenants/{{ _.tenant_id }}", "headers": [{ "name": "Authorization", "value": "Bearer {{ _.access_token }}" }] },
+    { "_id": "req_tenants_update", "_type": "request", "parentId": "fld_tenants", "name": "Update tenant", "method": "PUT", "url": "{{ _.base_url }}/api/v1/tenants/{{ _.tenant_id }}", "body": { "mimeType": "application/json", "text": "{\"name\":\"Local Barber Shop Updated\",\"timezone\":\"America/Argentina/Buenos_Aires\"}" }, "headers": [{ "name": "Authorization", "value": "Bearer {{ _.access_token }}" }, { "name": "Content-Type", "value": "application/json" }] },
+    { "_id": "req_tenants_delete", "_type": "request", "parentId": "fld_tenants", "name": "Deactivate tenant", "method": "DELETE", "url": "{{ _.base_url }}/api/v1/tenants/{{ _.tenant_id }}", "headers": [{ "name": "Authorization", "value": "Bearer {{ _.access_token }}" }] },
+
+    { "_id": "req_providers_list", "_type": "request", "parentId": "fld_providers", "name": "List providers", "method": "GET", "url": "{{ _.base_url }}/api/v1/providers?tenant_id={{ _.tenant_id }}&page=1&page_size=20", "headers": [{ "name": "Authorization", "value": "Bearer {{ _.access_token }}" }] },
+    { "_id": "req_providers_create", "_type": "request", "parentId": "fld_providers", "name": "Create provider", "method": "POST", "url": "{{ _.base_url }}/api/v1/providers", "body": { "mimeType": "application/json", "text": "{\"tenant_id\":\"{{ _.tenant_id }}\",\"name\":\"Juan Barber\"}" }, "headers": [{ "name": "Authorization", "value": "Bearer {{ _.access_token }}" }, { "name": "Content-Type", "value": "application/json" }] },
+    { "_id": "req_providers_get", "_type": "request", "parentId": "fld_providers", "name": "Get provider", "method": "GET", "url": "{{ _.base_url }}/api/v1/providers/{{ _.provider_id }}", "headers": [{ "name": "Authorization", "value": "Bearer {{ _.access_token }}" }] },
+    { "_id": "req_providers_update", "_type": "request", "parentId": "fld_providers", "name": "Update provider", "method": "PUT", "url": "{{ _.base_url }}/api/v1/providers/{{ _.provider_id }}", "body": { "mimeType": "application/json", "text": "{\"name\":\"Juan Barber Updated\"}" }, "headers": [{ "name": "Authorization", "value": "Bearer {{ _.access_token }}" }, { "name": "Content-Type", "value": "application/json" }] },
+    { "_id": "req_providers_delete", "_type": "request", "parentId": "fld_providers", "name": "Deactivate provider", "method": "DELETE", "url": "{{ _.base_url }}/api/v1/providers/{{ _.provider_id }}", "headers": [{ "name": "Authorization", "value": "Bearer {{ _.access_token }}" }] },
+
+    { "_id": "req_services_list", "_type": "request", "parentId": "fld_services", "name": "List services", "method": "GET", "url": "{{ _.base_url }}/api/v1/services?tenant_id={{ _.tenant_id }}&page=1&page_size=20", "headers": [{ "name": "Authorization", "value": "Bearer {{ _.access_token }}" }] },
+    { "_id": "req_services_create", "_type": "request", "parentId": "fld_services", "name": "Create service", "method": "POST", "url": "{{ _.base_url }}/api/v1/services", "body": { "mimeType": "application/json", "text": "{\"tenant_id\":\"{{ _.tenant_id }}\",\"name\":\"Haircut\",\"duration_minutes\":30}" }, "headers": [{ "name": "Authorization", "value": "Bearer {{ _.access_token }}" }, { "name": "Content-Type", "value": "application/json" }] },
+    { "_id": "req_services_get", "_type": "request", "parentId": "fld_services", "name": "Get service", "method": "GET", "url": "{{ _.base_url }}/api/v1/services/{{ _.service_id }}", "headers": [{ "name": "Authorization", "value": "Bearer {{ _.access_token }}" }] },
+    { "_id": "req_services_update", "_type": "request", "parentId": "fld_services", "name": "Update service", "method": "PUT", "url": "{{ _.base_url }}/api/v1/services/{{ _.service_id }}", "body": { "mimeType": "application/json", "text": "{\"name\":\"Haircut Updated\",\"duration_minutes\":30}" }, "headers": [{ "name": "Authorization", "value": "Bearer {{ _.access_token }}" }, { "name": "Content-Type", "value": "application/json" }] },
+    { "_id": "req_services_delete", "_type": "request", "parentId": "fld_services", "name": "Deactivate service", "method": "DELETE", "url": "{{ _.base_url }}/api/v1/services/{{ _.service_id }}", "headers": [{ "name": "Authorization", "value": "Bearer {{ _.access_token }}" }] },
+
+    { "_id": "req_customers_list", "_type": "request", "parentId": "fld_customers", "name": "List customers", "method": "GET", "url": "{{ _.base_url }}/api/v1/customers?tenant_id={{ _.tenant_id }}&page=1&page_size=20", "headers": [{ "name": "Authorization", "value": "Bearer {{ _.access_token }}" }] },
+    { "_id": "req_customers_create", "_type": "request", "parentId": "fld_customers", "name": "Create customer", "method": "POST", "url": "{{ _.base_url }}/api/v1/customers", "body": { "mimeType": "application/json", "text": "{\"tenant_id\":\"{{ _.tenant_id }}\",\"first_name\":\"Ada\",\"last_name\":\"Lovelace\",\"notes\":\"WhatsApp lead\"}" }, "headers": [{ "name": "Authorization", "value": "Bearer {{ _.access_token }}" }, { "name": "Content-Type", "value": "application/json" }] },
+    { "_id": "req_customers_get", "_type": "request", "parentId": "fld_customers", "name": "Get customer", "method": "GET", "url": "{{ _.base_url }}/api/v1/customers/{{ _.customer_id }}", "headers": [{ "name": "Authorization", "value": "Bearer {{ _.access_token }}" }] },
+    { "_id": "req_customers_update", "_type": "request", "parentId": "fld_customers", "name": "Update customer", "method": "PUT", "url": "{{ _.base_url }}/api/v1/customers/{{ _.customer_id }}", "body": { "mimeType": "application/json", "text": "{\"first_name\":\"Ada\",\"last_name\":\"Byron\",\"notes\":\"Updated notes\"}" }, "headers": [{ "name": "Authorization", "value": "Bearer {{ _.access_token }}" }, { "name": "Content-Type", "value": "application/json" }] },
+
+    { "_id": "req_availability_create", "_type": "request", "parentId": "fld_scheduling", "name": "Create provider availability", "method": "POST", "url": "{{ _.base_url }}/api/v1/providers/{{ _.provider_id }}/availability", "body": { "mimeType": "application/json", "text": "{\"weekday\":1,\"start_time\":\"09:00\",\"end_time\":\"18:00\"}" }, "headers": [{ "name": "Authorization", "value": "Bearer {{ _.access_token }}" }, { "name": "Content-Type", "value": "application/json" }] },
+    { "_id": "req_availability_list", "_type": "request", "parentId": "fld_scheduling", "name": "List provider availability", "method": "GET", "url": "{{ _.base_url }}/api/v1/providers/{{ _.provider_id }}/availability", "headers": [{ "name": "Authorization", "value": "Bearer {{ _.access_token }}" }] },
+    { "_id": "req_exception_create", "_type": "request", "parentId": "fld_scheduling", "name": "Create provider exception", "method": "POST", "url": "{{ _.base_url }}/api/v1/providers/{{ _.provider_id }}/exceptions", "body": { "mimeType": "application/json", "text": "{\"start_at\":\"2026-06-01T15:00:00Z\",\"end_at\":\"2026-06-01T16:00:00Z\",\"reason\":\"Blocked period\"}" }, "headers": [{ "name": "Authorization", "value": "Bearer {{ _.access_token }}" }, { "name": "Content-Type", "value": "application/json" }] },
+    { "_id": "req_exception_list", "_type": "request", "parentId": "fld_scheduling", "name": "List provider exceptions", "method": "GET", "url": "{{ _.base_url }}/api/v1/providers/{{ _.provider_id }}/exceptions", "headers": [{ "name": "Authorization", "value": "Bearer {{ _.access_token }}" }] },
+    { "_id": "req_slot_generator", "_type": "request", "parentId": "fld_scheduling", "name": "Generate slots", "method": "POST", "url": "{{ _.base_url }}/api/v1/slot-generator", "body": { "mimeType": "application/json", "text": "{\"tenant_id\":\"{{ _.tenant_id }}\",\"provider_id\":\"{{ _.provider_id }}\",\"number_of_weeks\":4,\"slot_minutes\":30}" }, "headers": [{ "name": "Authorization", "value": "Bearer {{ _.access_token }}" }, { "name": "Content-Type", "value": "application/json" }] },
+    { "_id": "req_available_slots", "_type": "request", "parentId": "fld_scheduling", "name": "Query available slots", "method": "GET", "url": "{{ _.base_url }}/api/v1/availability?tenant_id={{ _.tenant_id }}&provider_id={{ _.provider_id }}&date=2026-06-01&page=1&page_size=20", "headers": [{ "name": "Authorization", "value": "Bearer {{ _.access_token }}" }] },
+
+    { "_id": "req_appt_create", "_type": "request", "parentId": "fld_appointments", "name": "Create appointment", "method": "POST", "url": "{{ _.base_url }}/api/v1/appointments", "body": { "mimeType": "application/json", "text": "{\"tenant_id\":\"{{ _.tenant_id }}\",\"customer_id\":\"{{ _.customer_id }}\",\"service_id\":\"{{ _.service_id }}\",\"slot_id\":\"{{ _.slot_id }}\",\"notes\":\"Booked from Insomnia\"}" }, "headers": [{ "name": "Authorization", "value": "Bearer {{ _.access_token }}" }, { "name": "Content-Type", "value": "application/json" }] },
+    { "_id": "req_appt_list", "_type": "request", "parentId": "fld_appointments", "name": "List appointments", "method": "GET", "url": "{{ _.base_url }}/api/v1/appointments?tenant_id={{ _.tenant_id }}&page=1&page_size=20", "headers": [{ "name": "Authorization", "value": "Bearer {{ _.access_token }}" }] },
+    { "_id": "req_appt_get", "_type": "request", "parentId": "fld_appointments", "name": "Get appointment", "method": "GET", "url": "{{ _.base_url }}/api/v1/appointments/{{ _.appointment_id }}", "headers": [{ "name": "Authorization", "value": "Bearer {{ _.access_token }}" }] },
+    { "_id": "req_appt_patch", "_type": "request", "parentId": "fld_appointments", "name": "Patch appointment", "method": "PATCH", "url": "{{ _.base_url }}/api/v1/appointments/{{ _.appointment_id }}", "body": { "mimeType": "application/json", "text": "{\"notes\":\"Updated from Insomnia\"}" }, "headers": [{ "name": "Authorization", "value": "Bearer {{ _.access_token }}" }, { "name": "Content-Type", "value": "application/json" }] },
+    { "_id": "req_appt_delete", "_type": "request", "parentId": "fld_appointments", "name": "Cancel appointment", "method": "DELETE", "url": "{{ _.base_url }}/api/v1/appointments/{{ _.appointment_id }}", "headers": [{ "name": "Authorization", "value": "Bearer {{ _.access_token }}" }] },
+
+    { "_id": "req_convo_list", "_type": "request", "parentId": "fld_conversations", "name": "List conversations", "method": "GET", "url": "{{ _.base_url }}/api/v1/conversations?tenant_id={{ _.tenant_id }}&page=1&page_size=20", "headers": [{ "name": "Authorization", "value": "Bearer {{ _.access_token }}" }] },
+    { "_id": "req_convo_get", "_type": "request", "parentId": "fld_conversations", "name": "Get conversation", "method": "GET", "url": "{{ _.base_url }}/api/v1/conversations/{{ _.conversation_id }}", "headers": [{ "name": "Authorization", "value": "Bearer {{ _.access_token }}" }] },
+    { "_id": "req_convo_message", "_type": "request", "parentId": "fld_conversations", "name": "Store conversation message", "method": "POST", "url": "{{ _.base_url }}/api/v1/conversations/message", "body": { "mimeType": "application/json", "text": "{\"tenant_id\":\"{{ _.tenant_id }}\",\"customer_id\":\"{{ _.customer_id }}\",\"direction\":\"in\",\"message\":\"Hola, quiero reservar\",\"metadata\":{\"source\":\"insomnia\"}}" }, "headers": [{ "name": "Authorization", "value": "Bearer {{ _.access_token }}" }, { "name": "Content-Type", "value": "application/json" }] },
+
+    { "_id": "req_webhook_evolution", "_type": "request", "parentId": "fld_webhooks", "name": "Evolution webhook", "method": "POST", "url": "{{ _.base_url }}/api/v1/webhooks/evolution", "body": { "mimeType": "application/json", "text": "{\"external_id\":\"{{ _.tenant_channel_external_id }}\",\"from\":\"+5491111111111\",\"message\":\"Hola desde WhatsApp\"}" }, "headers": [{ "name": "Content-Type", "value": "application/json" }] }
+  ]
+}
