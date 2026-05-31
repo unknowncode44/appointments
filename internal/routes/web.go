@@ -14,12 +14,6 @@ func SetupRoutes(server *api.Server) error {
 	server.App.Post("/login", handlers.NewUserHandler(server.Store, server.TokenMaker, server.Config).LoginUser)
 	server.App.Post("/tokens/renew_access", handlers.NewTokenHandler(server.Store, server.TokenMaker, server.Config).RenewAccessToken)
 
-	// Grouped routes that require authentication
-	authGroup := server.App.Group("/", middleware.AuthMiddleware(server.TokenMaker))
-	authGroup.Get("/user/info", handlers.NewUserHandler(server.Store, server.TokenMaker, server.Config).GetUserProfile)
-	authGroup.Put("/user/update", handlers.NewUserHandler(server.Store, server.TokenMaker, server.Config).UpdateUserProfile)
-	authGroup.Post("/user/password_change", handlers.NewUserHandler(server.Store, server.TokenMaker, server.Config).ChangePassword)
-
 	adminRepo := repositories.NewAdminRepository(server.Store)
 	schedulingRepo := repositories.NewSchedulingRepository(server.Store)
 	workflowRepo := repositories.NewWorkflowRepository(server.Store)
@@ -28,6 +22,14 @@ func SetupRoutes(server *api.Server) error {
 	schedulingHandler := handlers.NewSchedulingMVPHandler(services.NewSchedulingService(schedulingRepo))
 	appointmentHandler := handlers.NewAppointmentMVPHandler(services.NewAppointmentService(workflowRepo))
 	conversationHandler := handlers.NewConversationMVPHandler(services.NewConversationService(workflowRepo))
+
+	server.App.Post("/api/v1/webhooks/evolution", conversationHandler.EvolutionWebhook)
+
+	// Grouped routes that require authentication
+	authGroup := server.App.Group("/", middleware.AuthMiddleware(server.TokenMaker))
+	authGroup.Get("/user/info", handlers.NewUserHandler(server.Store, server.TokenMaker, server.Config).GetUserProfile)
+	authGroup.Put("/user/update", handlers.NewUserHandler(server.Store, server.TokenMaker, server.Config).UpdateUserProfile)
+	authGroup.Post("/user/password_change", handlers.NewUserHandler(server.Store, server.TokenMaker, server.Config).ChangePassword)
 
 	apiV1 := authGroup.Group("/api/v1")
 	apiV1.Get("/tenants", adminHandler.ListTenants)
@@ -70,6 +72,5 @@ func SetupRoutes(server *api.Server) error {
 	apiV1.Get("/conversations/:id", conversationHandler.Get)
 	apiV1.Post("/conversations/message", conversationHandler.Message)
 
-	server.App.Post("/api/v1/webhooks/evolution", conversationHandler.EvolutionWebhook)
 	return nil
 }

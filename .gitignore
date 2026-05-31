@@ -1,3 +1,4 @@
 Makefile
 .idea
 tmp
+./app.env
