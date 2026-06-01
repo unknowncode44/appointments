@@ -7,7 +7,7 @@ import (
 
 const (
 	authorizationHeaderKey  = "authorization"
-	authorizationPayloadKey = "authorization_payload"
+	AuthorizationPayloadKey = "authorization_payload"
 )
 
 // AuthMiddleware creates a gin middleware for authorization
@@ -19,8 +19,12 @@ func AuthMiddleware(tokenMaker token.Maker) fiber.Handler {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "missing authorization header"})
 		}
 
-		// Assume Bearer token format: "Bearer <token>"
-		tokenStr := authHeader[len("Bearer "):]
+		// Verify if the header is not empty and start with "Bearer "
+		if len(authHeader) < 7 || authHeader[:7] != "Bearer " {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "missing authorization header"})
+		}
+
+		tokenStr := authHeader[7:]
 
 		// Verify the token
 		payload, err := tokenMaker.VerifyToken(tokenStr)
@@ -29,6 +33,7 @@ func AuthMiddleware(tokenMaker token.Maker) fiber.Handler {
 		}
 
 		// Attach user information to the request context
+		c.Locals(AuthorizationPayloadKey, payload)
 		c.Locals("authorizationPayloadKey", payload)
 
 		// Proceed to the next handler

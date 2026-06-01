@@ -8,8 +8,9 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
-	db "github.com/mousav1/ticket/internal/db/sqlc"
 	"github.com/mousav1/ticket/internal/api/dto"
+	"github.com/mousav1/ticket/internal/api/middleware"
+	db "github.com/mousav1/ticket/internal/db/sqlc"
 	"github.com/mousav1/ticket/internal/token"
 	"github.com/mousav1/ticket/internal/util"
 )
@@ -168,7 +169,7 @@ func (h *UserHandler) LoginUser(c *fiber.Ctx) error {
 
 // GetUserProfile handles fetching user profile
 func (h *UserHandler) GetUserProfile(c *fiber.Ctx) error {
-	payload := c.Locals("authorizationPayloadKey").(*token.Payload)
+	payload := c.Locals(middleware.AuthorizationPayloadKey).(*token.Payload)
 
 	user, err := h.Store.GetUserByUsernameFull(c.Context(), payload.Username)
 	if err != nil {
@@ -188,7 +189,7 @@ func (h *UserHandler) UpdateUserProfile(c *fiber.Ctx) error {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	payload := c.Locals("authorizationPayloadKey").(*token.Payload)
+	payload := c.Locals(middleware.AuthorizationPayloadKey).(*token.Payload)
 
 	user, err := h.Store.GetUserByUsername(c.Context(), payload.Username)
 	if err != nil {
@@ -225,7 +226,7 @@ func (h *UserHandler) ChangePassword(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "could not hash password"})
 	}
 
-	payload := c.Locals("authorizationPayloadKey").(*token.Payload)
+	payload := c.Locals(middleware.AuthorizationPayloadKey).(*token.Payload)
 
 	user, err := h.Store.GetUserByUsername(c.Context(), payload.Username)
 	if err != nil {
