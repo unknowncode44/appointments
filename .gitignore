@@ -3,5 +3,6 @@ Makefile
 tmp
 ./app.env
 /app.env
-.env
+*.env
+app.env
 
