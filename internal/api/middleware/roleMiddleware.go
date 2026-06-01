@@ -61,9 +61,10 @@ var RoutePermissions = []Permission{
 
 func RoleMiddleware() fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		payload, ok := c.Locals(authorizationPayloadKey).(*token.Payload)
+		payload, ok := c.Locals(AuthorizationPayloadKey).(*token.Payload)
+
 		if !ok {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid authorization payload"})
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Role Middleware: invalid authorization payload"})
 		}
 
 		method := c.Method()
@@ -143,9 +144,9 @@ func isParam(part string) bool {
 
 func RequireRole(allowedRoles ...string) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		payload, ok := c.Locals(authorizationPayloadKey).(*token.Payload)
+		payload, ok := c.Locals(AuthorizationPayloadKey).(*token.Payload)
 		if !ok {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid authorization payload"})
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Require Role: invalid authorization payload"})
 		}
 
 		for _, role := range allowedRoles {
@@ -161,9 +162,9 @@ func RequireRole(allowedRoles ...string) fiber.Handler {
 }
 
 func ExtractUserFromContext(c *fiber.Ctx) (*token.Payload, error) {
-	payload, ok := c.Locals(authorizationPayloadKey).(*token.Payload)
+	payload, ok := c.Locals(AuthorizationPayloadKey).(*token.Payload)
 	if !ok {
-		return nil, errors.New("invalid authorization payload")
+		return nil, errors.New("ExtractUserFromContext: invalid authorization payload")
 	}
 	return payload, nil
 }
