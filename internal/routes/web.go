@@ -25,19 +25,33 @@ func SetupRoutes(server *api.Server) error {
 
 	server.App.Post("/api/v1/webhooks/evolution", conversationHandler.EvolutionWebhook)
 
-	// Grouped routes that require authentication
-	authGroup := server.App.Group("/", middleware.AuthMiddleware(server.TokenMaker))
+	// Grouped routes that require authentication and role authorization
+	authGroup := server.App.Group("/", middleware.AuthMiddleware(server.TokenMaker), middleware.RoleMiddleware())
 	authGroup.Get("/user/info", handlers.NewUserHandler(server.Store, server.TokenMaker, server.Config).GetUserProfile)
 	authGroup.Put("/user/update", handlers.NewUserHandler(server.Store, server.TokenMaker, server.Config).UpdateUserProfile)
 	authGroup.Post("/user/password_change", handlers.NewUserHandler(server.Store, server.TokenMaker, server.Config).ChangePassword)
 
 	apiV1 := authGroup.Group("/api/v1")
+
+	// Admin only routes
 	apiV1.Get("/tenants", adminHandler.ListTenants)
 	apiV1.Post("/tenants", adminHandler.CreateTenant)
 	apiV1.Get("/tenants/:id", adminHandler.GetTenant)
 	apiV1.Put("/tenants/:id", adminHandler.UpdateTenant)
 	apiV1.Delete("/tenants/:id", adminHandler.DeactivateTenant)
 
+	// User management routes (admin only)
+	apiV1.Get("/users", handlers.NewUserHandler(server.Store, server.TokenMaker, server.Config).ListUsers)
+	apiV1.Post("/users", handlers.NewUserHandler(server.Store, server.TokenMaker, server.Config).CreateUserAdmin)
+	apiV1.Get("/users/:id", handlers.NewUserHandler(server.Store, server.TokenMaker, server.Config).GetUserByID)
+	apiV1.Put("/users/:id", handlers.NewUserHandler(server.Store, server.TokenMaker, server.Config).UpdateUser)
+	apiV1.Delete("/users/:id", handlers.NewUserHandler(server.Store, server.TokenMaker, server.Config).DeleteUser)
+	apiV1.Post("/users/:id/tenant", handlers.NewUserHandler(server.Store, server.TokenMaker, server.Config).LinkUserToTenant)
+	apiV1.Get("/users/:id/providers", handlers.NewUserHandler(server.Store, server.TokenMaker, server.Config).GetUserProviders)
+	apiV1.Post("/users/:id/provider", handlers.NewUserHandler(server.Store, server.TokenMaker, server.Config).LinkUserToProvider)
+	apiV1.Delete("/users/:id/provider", handlers.NewUserHandler(server.Store, server.TokenMaker, server.Config).RemoveUserFromProvider)
+
+	// TenantUser and Admin routes
 	apiV1.Get("/providers", adminHandler.ListProviders)
 	apiV1.Post("/providers", adminHandler.CreateProvider)
 	apiV1.Get("/providers/:id", adminHandler.GetProvider)
@@ -54,6 +68,7 @@ func SetupRoutes(server *api.Server) error {
 	apiV1.Put("/services/:id", adminHandler.UpdateService)
 	apiV1.Delete("/services/:id", adminHandler.DeactivateService)
 
+	// All authenticated users
 	apiV1.Get("/customers", adminHandler.ListCustomers)
 	apiV1.Post("/customers", adminHandler.CreateCustomer)
 	apiV1.Get("/customers/:id", adminHandler.GetCustomer)

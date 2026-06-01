@@ -69,7 +69,7 @@ func (h *TokenHandler) RenewAccessToken(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	accessToken, accessPayload, err := h.tokenMaker.CreateToken(refreshPayload.Username, h.Config.AccessTokenDuration)
+	accessToken, accessPayload, err := h.tokenMaker.CreateToken(refreshPayload.Username, refreshPayload.Role, refreshPayload.TenantID, h.Config.AccessTokenDuration)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "could not create token"})
 	}
