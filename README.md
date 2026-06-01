@@ -111,9 +111,82 @@ curl -X POST http://localhost:8040/login \
   -d '{"username":"dev_local","password":"devpass123"}'
 ```
 
+## Role-Based Access Control (RBAC)
+
+The API implements three role levels:
+
+### **Admin User (`adminUser`)**
+- Full access to all API endpoints
+- Can manage tenants, providers, services, customers
+- Can create, update, and delete users
+- Can link users to tenants and providers
+
+### **Tenant User (`tenantUser`)**
+- Can manage providers, services within their tenant
+- Can view customers
+- Can manage user-provider associations
+- Scoped to their assigned tenant
+
+### **Regular User (`user`)**
+- Can manage customers and appointments
+- Can view provider availability and exceptions
+- Can generate and query appointment slots
+- Limited to appointment booking and scheduling
+
+### User Management Routes (Admin Only)
+
+```text
+GET    /api/v1/users              List all users with pagination
+POST   /api/v1/users              Create user with role
+GET    /api/v1/users/:id          Get user details
+PUT    /api/v1/users/:id          Update user role/tenant
+DELETE /api/v1/users/:id          Delete user (CASCADE)
+POST   /api/v1/users/:id/tenant   Link user to tenant
+GET    /api/v1/users/:id/providers List user's providers
+POST   /api/v1/users/:id/provider Link user to provider
+DELETE /api/v1/users/:id/provider  Unlink user from provider
+```
+
+### Role Assignment Example
+
+Create admin user:
+```bash
+curl -X POST http://localhost:8040/api/v1/users \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username":"admin_user",
+    "password":"adminpass123",
+    "full_name":"Admin User",
+    "role":"adminUser"
+  }'
+```
+
+Create tenant user (linked to tenant):
+```bash
+curl -X POST http://localhost:8040/api/v1/users \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username":"tenant_owner",
+    "password":"tenantpass123",
+    "full_name":"Tenant Owner",
+    "role":"tenantUser",
+    "tenant_id":"<TENANT_UUID>"
+  }'
+```
+
+Link user to provider (admin or tenant user):
+```bash
+curl -X POST http://localhost:8040/api/v1/users/<USER_ID>/provider \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"provider_id":"<PROVIDER_UUID>"}'
+```
+
 ## API Routes
 
-Administrative routes:
+Administrative routes (Admin + Tenant User):
 
 ```text
 GET    /api/v1/tenants
@@ -121,6 +194,16 @@ POST   /api/v1/tenants
 GET    /api/v1/tenants/:id
 PUT    /api/v1/tenants/:id
 DELETE /api/v1/tenants/:id
+
+GET    /api/v1/users              (Admin only)
+POST   /api/v1/users              (Admin only)
+GET    /api/v1/users/:id          (Admin only)
+PUT    /api/v1/users/:id          (Admin only)
+DELETE /api/v1/users/:id          (Admin only)
+POST   /api/v1/users/:id/tenant   (Admin only)
+GET    /api/v1/users/:id/providers (Admin only)
+POST   /api/v1/users/:id/provider (Admin + Tenant User)
+DELETE /api/v1/users/:id/provider (Admin + Tenant User)
 
 GET    /api/v1/providers
 POST   /api/v1/providers
@@ -133,14 +216,9 @@ POST   /api/v1/services
 GET    /api/v1/services/:id
 PUT    /api/v1/services/:id
 DELETE /api/v1/services/:id
-
-GET    /api/v1/customers
-POST   /api/v1/customers
-GET    /api/v1/customers/:id
-PUT    /api/v1/customers/:id
 ```
 
-Scheduling routes:
+Scheduling routes (All authenticated users):
 
 ```text
 POST /api/v1/providers/:id/availability
@@ -151,7 +229,7 @@ POST /api/v1/slot-generator
 GET  /api/v1/availability
 ```
 
-Appointment routes:
+Appointment routes (All authenticated users):
 
 ```text
 POST   /api/v1/appointments
@@ -159,6 +237,15 @@ GET    /api/v1/appointments
 GET    /api/v1/appointments/:id
 PATCH  /api/v1/appointments/:id
 DELETE /api/v1/appointments/:id
+```
+
+Customer routes (All authenticated users):
+
+```text
+GET    /api/v1/customers
+POST   /api/v1/customers
+GET    /api/v1/customers/:id
+PUT    /api/v1/customers/:id
 ```
 
 Conversation and webhook routes:
