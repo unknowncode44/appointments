@@ -198,3 +198,34 @@ type EvolutionWebhookRequest struct {
 	Event      string          `json:"event"`
 	Data       json.RawMessage `json:"data"`
 }
+
+type UserCreateRequest struct {
+	Username string `json:"username" validate:"required,alphanum"`
+	Password string `json:"password" validate:"required,min=6"`
+	FullName string `json:"full_name" validate:"required"`
+	Role     string `json:"role" validate:"required,oneof=adminUser tenantUser user"`
+	TenantID *uuid.UUID `json:"tenant_id"`
+}
+
+type UserUpdateRequest struct {
+	FullName string `json:"full_name"`
+	Role     string `json:"role" validate:"oneof=adminUser tenantUser user"`
+	TenantID *uuid.UUID `json:"tenant_id"`
+}
+
+type UserResponse struct {
+	ID        int32      `json:"id"`
+	Username  string     `json:"username"`
+	FullName  string     `json:"full_name"`
+	Role      string     `json:"role"`
+	TenantID  *uuid.UUID `json:"tenant_id,omitempty"`
+	CreatedAt time.Time  `json:"created_at"`
+}
+
+type UserTenantRequest struct {
+	TenantID uuid.UUID `json:"tenant_id" validate:"required"`
+}
+
+type UserProviderRequest struct {
+	ProviderID uuid.UUID `json:"provider_id" validate:"required"`
+}

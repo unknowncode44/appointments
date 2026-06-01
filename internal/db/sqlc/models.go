@@ -5,10 +5,48 @@
 package db
 
 import (
+	"database/sql/driver"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 )
+
+type UserRole string
+
+const (
+	UserRoleAdminUser  UserRole = "adminUser"
+	UserRoleTenantUser UserRole = "tenantUser"
+	UserRoleUser       UserRole = "user"
+)
+
+func (e UserRole) Valid() error {
+	switch e {
+	case UserRoleAdminUser, UserRoleTenantUser, UserRoleUser:
+		return nil
+	}
+	return fmt.Errorf("invalid user role: %s", e)
+}
+
+func (e UserRole) String() string {
+	return string(e)
+}
+
+func (e UserRole) Value() (driver.Value, error) {
+	return string(e), nil
+}
+
+func (e *UserRole) Scan(value interface{}) error {
+	if value == nil {
+		return nil
+	}
+	str, ok := value.(string)
+	if !ok {
+		return fmt.Errorf("cannot scan %T into UserRole", value)
+	}
+	*e = UserRole(str)
+	return nil
+}
 
 type Session struct {
 	ID           uuid.UUID `json:"id"`
@@ -22,10 +60,18 @@ type Session struct {
 }
 
 type User struct {
-	ID                int32     `json:"id"`
-	Username          string    `json:"username"`
-	HashedPassword    string    `json:"hashed_password"`
-	FullName          string    `json:"full_name"`
-	PasswordChangedAt time.Time `json:"password_changed_at"`
-	CreatedAt         time.Time `json:"created_at"`
+	ID                int32      `json:"id"`
+	Username          string     `json:"username"`
+	HashedPassword    string     `json:"hashed_password"`
+	FullName          string     `json:"full_name"`
+	PasswordChangedAt time.Time  `json:"password_changed_at"`
+	CreatedAt         time.Time  `json:"created_at"`
+	Role              UserRole   `json:"role"`
+	TenantID          *uuid.UUID `json:"tenant_id"`
+}
+
+type UserProvider struct {
+	UserID     int32     `json:"user_id"`
+	ProviderID uuid.UUID `json:"provider_id"`
+	CreatedAt  time.Time `json:"created_at"`
 }
