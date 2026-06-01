@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/cors"
 	db "github.com/mousav1/ticket/internal/db/sqlc"
 	"github.com/mousav1/ticket/internal/token"
 	"github.com/mousav1/ticket/internal/util"
@@ -25,6 +26,12 @@ func NewServer(config util.Config, store *db.Store) (*Server, error) {
 	}
 
 	app := fiber.New()
+
+	app.Use(cors.New(cors.Config{
+		AllowOrigins: "*",
+		AllowMethods: "GET,POST,HEAD,PUT,DELETE,PATCH,OPTIONS",
+		AllowHeaders: "*",
+	}))
 
 	server := &Server{
 		Config:     config,
