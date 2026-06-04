@@ -11,6 +11,7 @@ const tenantCols = "id, name, timezone, active, created_at, updated_at"
 const providerCols = "id, tenant_id, name, active, created_at, updated_at"
 const serviceCols = "id, tenant_id, name, duration_minutes, active, created_at, updated_at"
 const customerCols = "id, tenant_id, first_name, last_name, notes, created_at, updated_at"
+const tenantChannelCols = "id, tenant_id, channel_type, external_id, external_key, active, created_at"
 
 type ListTenantsParams struct {
 	Search string
@@ -262,5 +263,75 @@ type UpdateCustomerParams struct {
 func (q *Queries) UpdateCustomer(ctx context.Context, arg UpdateCustomerParams) (Customer, error) {
 	var i Customer
 	err := q.db.QueryRow(ctx, "UPDATE customers SET first_name = $2, last_name = $3, notes = $4, updated_at = now() WHERE id = $1 RETURNING "+customerCols, arg.ID, arg.FirstName, arg.LastName, arg.Notes).Scan(&i.ID, &i.TenantID, &i.FirstName, &i.LastName, &i.Notes, &i.CreatedAt, &i.UpdatedAt)
+	return i, err
+}
+
+type ListTenantChannelsParams struct {
+	TenantID    uuid.UUID
+	ChannelType string
+	Active      *bool
+	Limit       int32
+	Offset      int32
+}
+
+func (q *Queries) ListTenantChannels(ctx context.Context, arg ListTenantChannelsParams) ([]TenantChannel, error) {
+	rows, err := q.db.Query(ctx, "SELECT "+tenantChannelCols+" FROM tenant_channels WHERE tenant_id = $1 AND ($2::text = '' OR channel_type = $2) AND ($3::boolean IS NULL OR active = $3) ORDER BY created_at DESC LIMIT $4 OFFSET $5", arg.TenantID, arg.ChannelType, arg.Active, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []TenantChannel{}
+	for rows.Next() {
+		var i TenantChannel
+		if err := rows.Scan(&i.ID, &i.TenantID, &i.ChannelType, &i.ExternalID, &i.ExternalKey, &i.Active, &i.CreatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	return items, rows.Err()
+}
+
+func (q *Queries) CountTenantChannels(ctx context.Context, arg ListTenantChannelsParams) (int64, error) {
+	var count int64
+	err := q.db.QueryRow(ctx, "SELECT count(*) FROM tenant_channels WHERE tenant_id = $1 AND ($2::text = '' OR channel_type = $2) AND ($3::boolean IS NULL OR active = $3)", arg.TenantID, arg.ChannelType, arg.Active).Scan(&count)
+	return count, err
+}
+
+func (q *Queries) GetTenantChannel(ctx context.Context, id uuid.UUID) (TenantChannel, error) {
+	var i TenantChannel
+	err := q.db.QueryRow(ctx, "SELECT "+tenantChannelCols+" FROM tenant_channels WHERE id = $1", id).Scan(&i.ID, &i.TenantID, &i.ChannelType, &i.ExternalID, &i.ExternalKey, &i.Active, &i.CreatedAt)
+	return i, err
+}
+
+type CreateTenantChannelParams struct {
+	TenantID    uuid.UUID
+	ChannelType string
+	ExternalID  string
+	ExternalKey pgtype.Text
+}
+
+func (q *Queries) CreateTenantChannel(ctx context.Context, arg CreateTenantChannelParams) (TenantChannel, error) {
+	var i TenantChannel
+	err := q.db.QueryRow(ctx, "INSERT INTO tenant_channels (tenant_id, channel_type, external_id, external_key) VALUES ($1, $2, $3, $4) RETURNING "+tenantChannelCols, arg.TenantID, arg.ChannelType, arg.ExternalID, arg.ExternalKey).Scan(&i.ID, &i.TenantID, &i.ChannelType, &i.ExternalID, &i.ExternalKey, &i.Active, &i.CreatedAt)
+	return i, err
+}
+
+type UpdateTenantChannelParams struct {
+	ID          uuid.UUID
+	ChannelType string
+	ExternalID  string
+	ExternalKey pgtype.Text
+	Active      bool
+}
+
+func (q *Queries) UpdateTenantChannel(ctx context.Context, arg UpdateTenantChannelParams) (TenantChannel, error) {
+	var i TenantChannel
+	err := q.db.QueryRow(ctx, "UPDATE tenant_channels SET channel_type = $2, external_id = $3, external_key = $4, active = $5 WHERE id = $1 RETURNING "+tenantChannelCols, arg.ID, arg.ChannelType, arg.ExternalID, arg.ExternalKey, arg.Active).Scan(&i.ID, &i.TenantID, &i.ChannelType, &i.ExternalID, &i.ExternalKey, &i.Active, &i.CreatedAt)
+	return i, err
+}
+
+func (q *Queries) DeactivateTenantChannel(ctx context.Context, id uuid.UUID) (TenantChannel, error) {
+	var i TenantChannel
+	err := q.db.QueryRow(ctx, "UPDATE tenant_channels SET active = false WHERE id = $1 RETURNING "+tenantChannelCols, id).Scan(&i.ID, &i.TenantID, &i.ChannelType, &i.ExternalID, &i.ExternalKey, &i.Active, &i.CreatedAt)
 	return i, err
 }

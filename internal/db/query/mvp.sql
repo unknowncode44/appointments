@@ -136,6 +136,44 @@ SET first_name = $2, last_name = $3, notes = $4, updated_at = now()
 WHERE id = $1
 RETURNING id, tenant_id, first_name, last_name, notes, created_at, updated_at;
 
+-- name: ListTenantChannels :many
+SELECT id, tenant_id, channel_type, external_id, external_key, active, created_at
+FROM tenant_channels
+WHERE tenant_id = $1
+  AND ($2::text = '' OR channel_type = $2)
+  AND ($3::boolean IS NULL OR active = $3)
+ORDER BY created_at DESC
+LIMIT $4 OFFSET $5;
+
+-- name: CountTenantChannels :one
+SELECT count(*)
+FROM tenant_channels
+WHERE tenant_id = $1
+  AND ($2::text = '' OR channel_type = $2)
+  AND ($3::boolean IS NULL OR active = $3);
+
+-- name: GetTenantChannel :one
+SELECT id, tenant_id, channel_type, external_id, external_key, active, created_at
+FROM tenant_channels
+WHERE id = $1;
+
+-- name: CreateTenantChannel :one
+INSERT INTO tenant_channels (tenant_id, channel_type, external_id, external_key)
+VALUES ($1, $2, $3, $4)
+RETURNING id, tenant_id, channel_type, external_id, external_key, active, created_at;
+
+-- name: UpdateTenantChannel :one
+UPDATE tenant_channels
+SET channel_type = $2, external_id = $3, external_key = $4, active = $5
+WHERE id = $1
+RETURNING id, tenant_id, channel_type, external_id, external_key, active, created_at;
+
+-- name: DeactivateTenantChannel :one
+UPDATE tenant_channels
+SET active = false
+WHERE id = $1
+RETURNING id, tenant_id, channel_type, external_id, external_key, active, created_at;
+
 -- name: CreateProviderAvailability :one
 INSERT INTO provider_availability (provider_id, weekday, start_time, end_time)
 VALUES ($1, $2, $3, $4)

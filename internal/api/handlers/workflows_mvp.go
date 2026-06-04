@@ -128,6 +128,18 @@ func (h *ConversationMVPHandler) Message(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(rsp)
 }
 
+func (h *ConversationMVPHandler) InboundMessage(c *fiber.Ctx) error {
+	var req dto.InboundMessageRequest
+	if err := bindAndValidate(c, &req); err != nil {
+		return response.BadRequest(c, err)
+	}
+	rsp, err := h.service.ProcessInboundMessage(c.Context(), req)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	return c.Status(fiber.StatusCreated).JSON(rsp)
+}
+
 func (h *ConversationMVPHandler) EvolutionWebhook(c *fiber.Ctx) error {
 	var req dto.EvolutionWebhookRequest
 	if err := c.BodyParser(&req); err != nil {
