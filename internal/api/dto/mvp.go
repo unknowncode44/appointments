@@ -83,6 +83,30 @@ type CustomerResponse struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type TenantChannelRequest struct {
+	TenantID    uuid.UUID `json:"tenant_id" validate:"required"`
+	ChannelType string    `json:"channel_type" validate:"required"`
+	ExternalID  string    `json:"external_id" validate:"required"`
+	ExternalKey *string   `json:"external_key"`
+}
+
+type TenantChannelUpdateRequest struct {
+	ChannelType string  `json:"channel_type" validate:"required"`
+	ExternalID  string  `json:"external_id" validate:"required"`
+	ExternalKey *string `json:"external_key"`
+	Active      bool    `json:"active"`
+}
+
+type TenantChannelResponse struct {
+	ID          uuid.UUID `json:"id"`
+	TenantID    uuid.UUID `json:"tenant_id"`
+	ChannelType string    `json:"channel_type"`
+	ExternalID  string    `json:"external_id"`
+	ExternalKey *string   `json:"external_key,omitempty"`
+	Active      bool      `json:"active"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
 type AvailabilityRequest struct {
 	Weekday   int16  `json:"weekday" validate:"min=0,max=6"`
 	StartTime string `json:"start_time" validate:"required"`
@@ -189,6 +213,14 @@ type ConversationMessageResponse struct {
 	CreatedAt time.Time       `json:"created_at"`
 }
 
+type InboundMessageRequest struct {
+	TenantChannelExternalID string          `json:"tenant_channel_external_id" validate:"required"`
+	ExternalCustomerID      string          `json:"external_customer_id" validate:"required"`
+	Message                 string          `json:"message" validate:"required"`
+	Source                  string          `json:"source"`
+	Metadata                json.RawMessage `json:"metadata"`
+}
+
 type EvolutionWebhookRequest struct {
 	Instance   string          `json:"instance"`
 	ExternalID string          `json:"external_id"`
@@ -200,16 +232,16 @@ type EvolutionWebhookRequest struct {
 }
 
 type UserCreateRequest struct {
-	Username string `json:"username" validate:"required,alphanum"`
-	Password string `json:"password" validate:"required,min=6"`
-	FullName string `json:"full_name" validate:"required"`
-	Role     string `json:"role" validate:"required,oneof=adminUser tenantUser user"`
+	Username string     `json:"username" validate:"required,alphanum"`
+	Password string     `json:"password" validate:"required,min=6"`
+	FullName string     `json:"full_name" validate:"required"`
+	Role     string     `json:"role" validate:"required,oneof=adminUser tenantUser user"`
 	TenantID *uuid.UUID `json:"tenant_id"`
 }
 
 type UserUpdateRequest struct {
-	FullName string `json:"full_name"`
-	Role     string `json:"role" validate:"oneof=adminUser tenantUser user"`
+	FullName string     `json:"full_name"`
+	Role     string     `json:"role" validate:"oneof=adminUser tenantUser user"`
 	TenantID *uuid.UUID `json:"tenant_id"`
 }
 

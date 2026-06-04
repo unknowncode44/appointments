@@ -30,6 +30,11 @@ type AdminService interface {
 	GetCustomer(context.Context, uuid.UUID) (dto.CustomerResponse, error)
 	CreateCustomer(context.Context, dto.CustomerRequest) (dto.CustomerResponse, error)
 	UpdateCustomer(context.Context, uuid.UUID, dto.CustomerUpdateRequest) (dto.CustomerResponse, error)
+	ListTenantChannels(context.Context, uuid.UUID, string, *bool, pagination.Page) (pagination.Response[dto.TenantChannelResponse], error)
+	GetTenantChannel(context.Context, uuid.UUID) (dto.TenantChannelResponse, error)
+	CreateTenantChannel(context.Context, dto.TenantChannelRequest) (dto.TenantChannelResponse, error)
+	UpdateTenantChannel(context.Context, uuid.UUID, dto.TenantChannelUpdateRequest) (dto.TenantChannelResponse, error)
+	DeactivateTenantChannel(context.Context, uuid.UUID) (dto.TenantChannelResponse, error)
 }
 
 type adminService struct{ repo repositories.AdminRepository }
@@ -113,6 +118,26 @@ func (s *adminService) CreateCustomer(ctx context.Context, req dto.CustomerReque
 func (s *adminService) UpdateCustomer(ctx context.Context, id uuid.UUID, req dto.CustomerUpdateRequest) (dto.CustomerResponse, error) {
 	item, err := s.repo.UpdateCustomer(ctx, db.UpdateCustomerParams{ID: id, FirstName: repositories.Text(req.FirstName), LastName: repositories.Text(req.LastName), Notes: repositories.Text(req.Notes)})
 	return mapCustomer(item), err
+}
+func (s *adminService) ListTenantChannels(ctx context.Context, tenantID uuid.UUID, channelType string, active *bool, p pagination.Page) (pagination.Response[dto.TenantChannelResponse], error) {
+	items, total, err := s.repo.ListTenantChannels(ctx, db.ListTenantChannelsParams{TenantID: tenantID, ChannelType: channelType, Active: active, Limit: p.PageSize, Offset: p.Offset})
+	return paged(items, total, p, mapTenantChannel), err
+}
+func (s *adminService) GetTenantChannel(ctx context.Context, id uuid.UUID) (dto.TenantChannelResponse, error) {
+	item, err := s.repo.GetTenantChannel(ctx, id)
+	return mapTenantChannel(item), err
+}
+func (s *adminService) CreateTenantChannel(ctx context.Context, req dto.TenantChannelRequest) (dto.TenantChannelResponse, error) {
+	item, err := s.repo.CreateTenantChannel(ctx, db.CreateTenantChannelParams{TenantID: req.TenantID, ChannelType: req.ChannelType, ExternalID: req.ExternalID, ExternalKey: repositories.Text(req.ExternalKey)})
+	return mapTenantChannel(item), err
+}
+func (s *adminService) UpdateTenantChannel(ctx context.Context, id uuid.UUID, req dto.TenantChannelUpdateRequest) (dto.TenantChannelResponse, error) {
+	item, err := s.repo.UpdateTenantChannel(ctx, db.UpdateTenantChannelParams{ID: id, ChannelType: req.ChannelType, ExternalID: req.ExternalID, ExternalKey: repositories.Text(req.ExternalKey), Active: req.Active})
+	return mapTenantChannel(item), err
+}
+func (s *adminService) DeactivateTenantChannel(ctx context.Context, id uuid.UUID) (dto.TenantChannelResponse, error) {
+	item, err := s.repo.DeactivateTenantChannel(ctx, id)
+	return mapTenantChannel(item), err
 }
 
 func paged[I any, O any](items []I, total int64, p pagination.Page, mapper func(I) O) pagination.Response[O] {

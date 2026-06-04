@@ -74,6 +74,12 @@ func SetupRoutes(server *api.Server) error {
 	apiV1.Get("/customers/:id", adminHandler.GetCustomer)
 	apiV1.Put("/customers/:id", adminHandler.UpdateCustomer)
 
+	apiV1.Get("/tenant-channels", adminHandler.ListTenantChannels)
+	apiV1.Post("/tenant-channels", adminHandler.CreateTenantChannel)
+	apiV1.Get("/tenant-channels/:id", adminHandler.GetTenantChannel)
+	apiV1.Put("/tenant-channels/:id", adminHandler.UpdateTenantChannel)
+	apiV1.Delete("/tenant-channels/:id", adminHandler.DeactivateTenantChannel)
+
 	apiV1.Post("/slot-generator", schedulingHandler.GenerateSlots)
 	apiV1.Get("/availability", schedulingHandler.Availability)
 
@@ -86,6 +92,7 @@ func SetupRoutes(server *api.Server) error {
 	apiV1.Get("/conversations", conversationHandler.List)
 	apiV1.Get("/conversations/:id", conversationHandler.Get)
 	apiV1.Post("/conversations/message", conversationHandler.Message)
+	apiV1.Post("/inbound-messages", conversationHandler.InboundMessage)
 
 	return nil
 }

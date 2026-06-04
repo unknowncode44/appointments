@@ -27,6 +27,11 @@ type AdminRepository interface {
 	GetCustomer(context.Context, uuid.UUID) (db.Customer, error)
 	CreateCustomer(context.Context, db.CreateCustomerParams) (db.Customer, error)
 	UpdateCustomer(context.Context, db.UpdateCustomerParams) (db.Customer, error)
+	ListTenantChannels(context.Context, db.ListTenantChannelsParams) ([]db.TenantChannel, int64, error)
+	GetTenantChannel(context.Context, uuid.UUID) (db.TenantChannel, error)
+	CreateTenantChannel(context.Context, db.CreateTenantChannelParams) (db.TenantChannel, error)
+	UpdateTenantChannel(context.Context, db.UpdateTenantChannelParams) (db.TenantChannel, error)
+	DeactivateTenantChannel(context.Context, uuid.UUID) (db.TenantChannel, error)
 }
 
 type adminRepository struct{ store *db.Store }
@@ -112,4 +117,24 @@ func (r *adminRepository) CreateCustomer(ctx context.Context, arg db.CreateCusto
 }
 func (r *adminRepository) UpdateCustomer(ctx context.Context, arg db.UpdateCustomerParams) (db.Customer, error) {
 	return r.store.UpdateCustomer(ctx, arg)
+}
+func (r *adminRepository) ListTenantChannels(ctx context.Context, arg db.ListTenantChannelsParams) ([]db.TenantChannel, int64, error) {
+	items, err := r.store.ListTenantChannels(ctx, arg)
+	if err != nil {
+		return nil, 0, err
+	}
+	total, err := r.store.CountTenantChannels(ctx, arg)
+	return items, total, err
+}
+func (r *adminRepository) GetTenantChannel(ctx context.Context, id uuid.UUID) (db.TenantChannel, error) {
+	return r.store.GetTenantChannel(ctx, id)
+}
+func (r *adminRepository) CreateTenantChannel(ctx context.Context, arg db.CreateTenantChannelParams) (db.TenantChannel, error) {
+	return r.store.CreateTenantChannel(ctx, arg)
+}
+func (r *adminRepository) UpdateTenantChannel(ctx context.Context, arg db.UpdateTenantChannelParams) (db.TenantChannel, error) {
+	return r.store.UpdateTenantChannel(ctx, arg)
+}
+func (r *adminRepository) DeactivateTenantChannel(ctx context.Context, id uuid.UUID) (db.TenantChannel, error) {
+	return r.store.DeactivateTenantChannel(ctx, id)
 }

@@ -40,6 +40,11 @@ var RoutePermissions = []Permission{
 	{Method: "GET", Path: "/api/v1/services/:id", Roles: []string{"adminUser", "tenantUser"}},
 	{Method: "PUT", Path: "/api/v1/services/:id", Roles: []string{"adminUser", "tenantUser"}},
 	{Method: "DELETE", Path: "/api/v1/services/:id", Roles: []string{"adminUser", "tenantUser"}},
+	{Method: "GET", Path: "/api/v1/tenant-channels", Roles: []string{"adminUser", "tenantUser"}},
+	{Method: "POST", Path: "/api/v1/tenant-channels", Roles: []string{"adminUser", "tenantUser"}},
+	{Method: "GET", Path: "/api/v1/tenant-channels/:id", Roles: []string{"adminUser", "tenantUser"}},
+	{Method: "PUT", Path: "/api/v1/tenant-channels/:id", Roles: []string{"adminUser", "tenantUser"}},
+	{Method: "DELETE", Path: "/api/v1/tenant-channels/:id", Roles: []string{"adminUser", "tenantUser"}},
 
 	// All authenticated users
 	{Method: "GET", Path: "/api/v1/customers", Roles: []string{"adminUser", "tenantUser", "user"}},
@@ -57,6 +62,10 @@ var RoutePermissions = []Permission{
 	{Method: "GET", Path: "/api/v1/appointments/:id", Roles: []string{"adminUser", "tenantUser", "user"}},
 	{Method: "PATCH", Path: "/api/v1/appointments/:id", Roles: []string{"adminUser", "tenantUser", "user"}},
 	{Method: "DELETE", Path: "/api/v1/appointments/:id", Roles: []string{"adminUser", "tenantUser", "user"}},
+	{Method: "GET", Path: "/api/v1/conversations", Roles: []string{"adminUser", "tenantUser"}},
+	{Method: "GET", Path: "/api/v1/conversations/:id", Roles: []string{"adminUser", "tenantUser"}},
+	{Method: "POST", Path: "/api/v1/conversations/message", Roles: []string{"adminUser", "tenantUser"}},
+	{Method: "POST", Path: "/api/v1/inbound-messages", Roles: []string{"adminUser", "tenantUser"}},
 }
 
 func RoleMiddleware() fiber.Handler {
