@@ -26,6 +26,7 @@ type ConversationService interface {
 	ListThreads(context.Context, uuid.UUID, pagination.Page) ([]dto.ConversationThreadResponse, error)
 	GetThread(context.Context, uuid.UUID) (dto.ConversationThreadResponse, error)
 	StoreMessage(context.Context, dto.ConversationMessageRequest) (dto.ConversationMessageResponse, error)
+	ProcessInboundMessage(context.Context, dto.InboundMessageRequest) (dto.ConversationMessageResponse, error)
 	ProcessEvolutionWebhook(context.Context, dto.EvolutionWebhookRequest, []byte) error
 }
 
@@ -212,6 +213,27 @@ func (s *conversationService) StoreMessage(ctx context.Context, req dto.Conversa
 	return mapMessage(out), err
 }
 
+func (s *conversationService) ProcessInboundMessage(ctx context.Context, req dto.InboundMessageRequest) (dto.ConversationMessageResponse, error) {
+	source := req.Source
+	if source == "" {
+		source = "n8n"
+	}
+	metadata := req.Metadata
+	if len(metadata) == 0 {
+		metadata, _ = json.Marshal(req)
+	}
+	msg, err := s.storeInboundMessage(ctx, inboundMessage{
+		ChannelExternalID:  req.TenantChannelExternalID,
+		ExternalCustomerID: req.ExternalCustomerID,
+		Message:            req.Message,
+		Source:             source,
+		Metadata:           metadata,
+		LogPayload:         metadata,
+		State:              "inbound_message_received",
+	})
+	return mapMessage(msg), err
+}
+
 func (s *conversationService) ProcessEvolutionWebhook(ctx context.Context, req dto.EvolutionWebhookRequest, raw []byte) error {
 	externalID := req.ExternalID
 	if externalID == "" {
@@ -224,33 +246,65 @@ func (s *conversationService) ProcessEvolutionWebhook(ctx context.Context, req d
 	if externalID == "" || externalCustomer == "" {
 		return response.ErrInvalidInput
 	}
+	message := req.Message
+	if message == "" && len(req.Data) > 0 {
+		message = string(req.Data)
+	}
+	metadata, _ := json.Marshal(req)
+	_, err := s.storeInboundMessage(ctx, inboundMessage{
+		ChannelExternalID:  externalID,
+		ExternalCustomerID: externalCustomer,
+		Message:            message,
+		Source:             "evolution",
+		Metadata:           metadata,
+		LogPayload:         raw,
+		State:              "webhook_received",
+	})
+	return err
+}
 
-	return s.repo.Store().ExecTx(ctx, func(q *db.Queries) error {
-		channel, err := q.GetTenantChannelByExternalID(ctx, externalID)
+type inboundMessage struct {
+	ChannelExternalID  string
+	ExternalCustomerID string
+	Message            string
+	Source             string
+	Metadata           []byte
+	LogPayload         []byte
+	State              string
+}
+
+func (s *conversationService) storeInboundMessage(ctx context.Context, req inboundMessage) (db.ConversationMessage, error) {
+	var out db.ConversationMessage
+	if req.ChannelExternalID == "" || req.ExternalCustomerID == "" || req.Message == "" {
+		return out, response.ErrInvalidInput
+	}
+	if len(req.Metadata) == 0 {
+		req.Metadata = []byte(`{}`)
+	}
+	if len(req.LogPayload) == 0 {
+		req.LogPayload = req.Metadata
+	}
+	err := s.repo.Store().ExecTx(ctx, func(q *db.Queries) error {
+		channel, err := q.GetTenantChannelByExternalID(ctx, req.ChannelExternalID)
 		if err != nil {
 			return err
 		}
-		if _, err := q.CreateWebhookLog(ctx, db.CreateWebhookLogParams{TenantID: uuid.NullUUID{UUID: channel.TenantID, Valid: true}, Source: "evolution", Payload: raw}); err != nil {
+		if _, err := q.CreateWebhookLog(ctx, db.CreateWebhookLogParams{TenantID: uuid.NullUUID{UUID: channel.TenantID, Valid: true}, Source: req.Source, Payload: req.LogPayload}); err != nil {
 			return err
 		}
-		customer, err := q.GetCustomerByChannel(ctx, db.GetCustomerByChannelParams{TenantChannelID: channel.ID, ExternalIdentifier: externalCustomer})
+		customer, err := q.GetCustomerByChannel(ctx, db.GetCustomerByChannelParams{TenantChannelID: channel.ID, ExternalIdentifier: req.ExternalCustomerID})
 		if errors.Is(err, pgx.ErrNoRows) {
 			customer, err = q.CreateCustomer(ctx, db.CreateCustomerParams{TenantID: channel.TenantID})
 			if err != nil {
 				return err
 			}
-			if _, err := q.CreateCustomerChannel(ctx, db.CreateCustomerChannelParams{CustomerID: customer.ID, TenantChannelID: channel.ID, ExternalIdentifier: externalCustomer}); err != nil {
+			if _, err := q.CreateCustomerChannel(ctx, db.CreateCustomerChannelParams{CustomerID: customer.ID, TenantChannelID: channel.ID, ExternalIdentifier: req.ExternalCustomerID}); err != nil {
 				return err
 			}
 		}
 		if err != nil {
 			return err
 		}
-		message := req.Message
-		if message == "" && len(req.Data) > 0 {
-			message = string(req.Data)
-		}
-		metadata, _ := json.Marshal(req)
 		thread, err := q.GetConversationThreadByCustomer(ctx, db.CreateConversationThreadParams{TenantID: channel.TenantID, CustomerID: customer.ID})
 		if errors.Is(err, pgx.ErrNoRows) {
 			thread, err = q.CreateConversationThread(ctx, db.CreateConversationThreadParams{TenantID: channel.TenantID, CustomerID: customer.ID})
@@ -258,10 +312,13 @@ func (s *conversationService) ProcessEvolutionWebhook(ctx context.Context, req d
 		if err != nil {
 			return err
 		}
-		if _, err := q.CreateConversationMessage(ctx, db.CreateConversationMessageParams{ThreadID: thread.ID, Direction: "in", Message: message, Metadata: metadata}); err != nil {
+		msg, err := q.CreateConversationMessage(ctx, db.CreateConversationMessageParams{ThreadID: thread.ID, Direction: "in", Message: req.Message, Metadata: req.Metadata})
+		if err != nil {
 			return err
 		}
-		_, err = q.UpsertConversationState(ctx, db.UpsertConversationStateParams{TenantID: channel.TenantID, CustomerID: customer.ID, State: "webhook_received", Data: metadata})
+		_, err = q.UpsertConversationState(ctx, db.UpsertConversationStateParams{TenantID: channel.TenantID, CustomerID: customer.ID, State: req.State, Data: req.Metadata})
+		out = msg
 		return err
 	})
+	return out, err
 }

@@ -259,6 +259,74 @@ func (h *AdminMVPHandler) UpdateCustomer(c *fiber.Ctx) error {
 	return c.JSON(rsp)
 }
 
+func (h *AdminMVPHandler) ListTenantChannels(c *fiber.Ctx) error {
+	tenantID, err := uuid.Parse(c.Query("tenant_id"))
+	if err != nil {
+		return response.Error(c, response.ErrInvalidInput)
+	}
+	active, err := queryBool(c, "active")
+	if err != nil {
+		return response.Error(c, err)
+	}
+	rsp, err := h.service.ListTenantChannels(c.Context(), tenantID, c.Query("channel_type"), active, pagination.FromCtx(c))
+	if err != nil {
+		return response.Error(c, err)
+	}
+	return c.JSON(rsp)
+}
+
+func (h *AdminMVPHandler) GetTenantChannel(c *fiber.Ctx) error {
+	id, err := parseID(c, "id")
+	if err != nil {
+		return response.Error(c, err)
+	}
+	rsp, err := h.service.GetTenantChannel(c.Context(), id)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	return c.JSON(rsp)
+}
+
+func (h *AdminMVPHandler) CreateTenantChannel(c *fiber.Ctx) error {
+	var req dto.TenantChannelRequest
+	if err := bindAndValidate(c, &req); err != nil {
+		return response.BadRequest(c, err)
+	}
+	rsp, err := h.service.CreateTenantChannel(c.Context(), req)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	return c.Status(fiber.StatusCreated).JSON(rsp)
+}
+
+func (h *AdminMVPHandler) UpdateTenantChannel(c *fiber.Ctx) error {
+	id, err := parseID(c, "id")
+	if err != nil {
+		return response.Error(c, err)
+	}
+	var req dto.TenantChannelUpdateRequest
+	if err := bindAndValidate(c, &req); err != nil {
+		return response.BadRequest(c, err)
+	}
+	rsp, err := h.service.UpdateTenantChannel(c.Context(), id, req)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	return c.JSON(rsp)
+}
+
+func (h *AdminMVPHandler) DeactivateTenantChannel(c *fiber.Ctx) error {
+	id, err := parseID(c, "id")
+	if err != nil {
+		return response.Error(c, err)
+	}
+	rsp, err := h.service.DeactivateTenantChannel(c.Context(), id)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	return c.JSON(rsp)
+}
+
 func (h *AdminMVPHandler) getTenant(c *fiber.Ctx, param string) error {
 	id, err := parseID(c, param)
 	if err != nil {

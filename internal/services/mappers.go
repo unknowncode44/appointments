@@ -34,6 +34,18 @@ func mapCustomer(v db.Customer) dto.CustomerResponse {
 	}
 }
 
+func mapTenantChannel(v db.TenantChannel) dto.TenantChannelResponse {
+	return dto.TenantChannelResponse{
+		ID:          v.ID,
+		TenantID:    v.TenantID,
+		ChannelType: v.ChannelType,
+		ExternalID:  v.ExternalID,
+		ExternalKey: repositories.TextPtr(v.ExternalKey),
+		Active:      v.Active,
+		CreatedAt:   v.CreatedAt,
+	}
+}
+
 func mapAvailability(v db.ProviderAvailability) dto.AvailabilityResponse {
 	return dto.AvailabilityResponse{
 		ID:         v.ID,
