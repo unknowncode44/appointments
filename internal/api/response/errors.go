@@ -11,6 +11,7 @@ var (
 	ErrNotFound     = errors.New("not found")
 	ErrConflict     = errors.New("conflict")
 	ErrInvalidInput = errors.New("invalid input")
+	ErrForbidden    = errors.New("forbidden")
 )
 
 func Error(c *fiber.Ctx, err error) error {
@@ -26,6 +27,9 @@ func Error(c *fiber.Ctx, err error) error {
 		msg = err.Error()
 	case errors.Is(err, ErrInvalidInput):
 		status = fiber.StatusBadRequest
+		msg = err.Error()
+	case errors.Is(err, ErrForbidden):
+		status = fiber.StatusForbidden
 		msg = err.Error()
 	}
 
