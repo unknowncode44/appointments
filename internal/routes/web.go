@@ -10,10 +10,14 @@ import (
 
 func SetupRoutes(server *api.Server) error {
 
-	server.App.Post("/register", handlers.NewUserHandler(server.Store, server.TokenMaker, server.Config).RegisterUser)
-	server.App.Post("/login", handlers.NewUserHandler(server.Store, server.TokenMaker, server.Config).LoginUser)
+	// ── Public auth endpoints ───────────────────────────────────────────────
+	userHandler := handlers.NewUserHandler(server.Store, server.TokenMaker, server.Config)
+
+	server.App.Post("/register", userHandler.RegisterUser)
+	server.App.Post("/login", userHandler.LoginUser)
 	server.App.Post("/tokens/renew_access", handlers.NewTokenHandler(server.Store, server.TokenMaker, server.Config).RenewAccessToken)
 
+	// ── Domain handler instances (one each) ─────────────────────────────────
 	adminRepo := repositories.NewAdminRepository(server.Store)
 	schedulingRepo := repositories.NewSchedulingRepository(server.Store)
 	workflowRepo := repositories.NewWorkflowRepository(server.Store)
@@ -23,76 +27,88 @@ func SetupRoutes(server *api.Server) error {
 	appointmentHandler := handlers.NewAppointmentMVPHandler(services.NewAppointmentService(workflowRepo))
 	conversationHandler := handlers.NewConversationMVPHandler(services.NewConversationService(workflowRepo))
 
+	// ── Webhook (public — Evolution calls without JWT) ──────────────────────
 	server.App.Post("/api/v1/webhooks/evolution", conversationHandler.EvolutionWebhook)
 
-	// Grouped routes that require authentication and role authorization
-	authGroup := server.App.Group("/", middleware.AuthMiddleware(server.TokenMaker), middleware.RoleMiddleware())
-	authGroup.Get("/user/info", handlers.NewUserHandler(server.Store, server.TokenMaker, server.Config).GetUserProfile)
-	authGroup.Put("/user/update", handlers.NewUserHandler(server.Store, server.TokenMaker, server.Config).UpdateUserProfile)
-	authGroup.Post("/user/password_change", handlers.NewUserHandler(server.Store, server.TokenMaker, server.Config).ChangePassword)
+	// ── Authenticated group ─────────────────────────────────────────────────
+	auth := server.App.Group("/", middleware.AuthMiddleware(server.TokenMaker))
 
-	apiV1 := authGroup.Group("/api/v1")
+	// Own-user routes (any authenticated role)
+	auth.Get("/user/info", userHandler.GetUserProfile)
+	auth.Put("/user/update", userHandler.UpdateUserProfile)
+	auth.Post("/user/password_change", userHandler.ChangePassword)
 
-	// Admin only routes
-	apiV1.Get("/tenants", adminHandler.ListTenants)
-	apiV1.Post("/tenants", adminHandler.CreateTenant)
-	apiV1.Get("/tenants/:id", adminHandler.GetTenant)
-	apiV1.Put("/tenants/:id", adminHandler.UpdateTenant)
-	apiV1.Delete("/tenants/:id", adminHandler.DeactivateTenant)
+	v1 := auth.Group("/api/v1")
 
-	// User management routes (admin only)
-	apiV1.Get("/users", handlers.NewUserHandler(server.Store, server.TokenMaker, server.Config).ListUsers)
-	apiV1.Post("/users", handlers.NewUserHandler(server.Store, server.TokenMaker, server.Config).CreateUserAdmin)
-	apiV1.Get("/users/:id", handlers.NewUserHandler(server.Store, server.TokenMaker, server.Config).GetUserByID)
-	apiV1.Put("/users/:id", handlers.NewUserHandler(server.Store, server.TokenMaker, server.Config).UpdateUser)
-	apiV1.Delete("/users/:id", handlers.NewUserHandler(server.Store, server.TokenMaker, server.Config).DeleteUser)
-	apiV1.Post("/users/:id/tenant", handlers.NewUserHandler(server.Store, server.TokenMaker, server.Config).LinkUserToTenant)
-	apiV1.Get("/users/:id/providers", handlers.NewUserHandler(server.Store, server.TokenMaker, server.Config).GetUserProviders)
-	apiV1.Post("/users/:id/provider", handlers.NewUserHandler(server.Store, server.TokenMaker, server.Config).LinkUserToProvider)
-	apiV1.Delete("/users/:id/provider", handlers.NewUserHandler(server.Store, server.TokenMaker, server.Config).RemoveUserFromProvider)
+	// ── Admin-only: tenant management ───────────────────────────────────────
+	adminOnly := middleware.RequireRole("adminUser")
 
-	// TenantUser and Admin routes
-	apiV1.Get("/providers", adminHandler.ListProviders)
-	apiV1.Post("/providers", adminHandler.CreateProvider)
-	apiV1.Get("/providers/:id", adminHandler.GetProvider)
-	apiV1.Put("/providers/:id", adminHandler.UpdateProvider)
-	apiV1.Delete("/providers/:id", adminHandler.DeactivateProvider)
-	apiV1.Post("/providers/:id/availability", schedulingHandler.CreateAvailability)
-	apiV1.Get("/providers/:id/availability", schedulingHandler.ListAvailability)
-	apiV1.Post("/providers/:id/exceptions", schedulingHandler.CreateException)
-	apiV1.Get("/providers/:id/exceptions", schedulingHandler.ListExceptions)
+	v1.Get("/tenants", adminOnly, adminHandler.ListTenants)
+	v1.Post("/tenants", adminOnly, adminHandler.CreateTenant)
+	v1.Get("/tenants/:id", adminOnly, adminHandler.GetTenant)
+	v1.Put("/tenants/:id", adminOnly, adminHandler.UpdateTenant)
+	v1.Delete("/tenants/:id", adminOnly, adminHandler.DeactivateTenant)
 
-	apiV1.Get("/services", adminHandler.ListServices)
-	apiV1.Post("/services", adminHandler.CreateService)
-	apiV1.Get("/services/:id", adminHandler.GetService)
-	apiV1.Put("/services/:id", adminHandler.UpdateService)
-	apiV1.Delete("/services/:id", adminHandler.DeactivateService)
+	// ── Admin-only: user management ─────────────────────────────────────────
+	v1.Get("/users", adminOnly, userHandler.ListUsers)
+	v1.Post("/users", adminOnly, userHandler.CreateUserAdmin)
+	v1.Get("/users/:id", adminOnly, userHandler.GetUserByID)
+	v1.Put("/users/:id", adminOnly, userHandler.UpdateUser)
+	v1.Delete("/users/:id", adminOnly, userHandler.DeleteUser)
+	v1.Post("/users/:id/tenant", adminOnly, userHandler.LinkUserToTenant)
+	v1.Get("/users/:id/providers", adminOnly, userHandler.GetUserProviders)
 
-	// All authenticated users
-	apiV1.Get("/customers", adminHandler.ListCustomers)
-	apiV1.Post("/customers", adminHandler.CreateCustomer)
-	apiV1.Get("/customers/:id", adminHandler.GetCustomer)
-	apiV1.Put("/customers/:id", adminHandler.UpdateCustomer)
+	// Admin + tenantUser: user-provider links
+	adminOrTenant := middleware.RequireRole("adminUser", "tenantUser")
+	v1.Post("/users/:id/provider", adminOrTenant, userHandler.LinkUserToProvider)
+	v1.Delete("/users/:id/provider", adminOrTenant, userHandler.RemoveUserFromProvider)
 
-	apiV1.Get("/tenant-channels", adminHandler.ListTenantChannels)
-	apiV1.Post("/tenant-channels", adminHandler.CreateTenantChannel)
-	apiV1.Get("/tenant-channels/:id", adminHandler.GetTenantChannel)
-	apiV1.Put("/tenant-channels/:id", adminHandler.UpdateTenantChannel)
-	apiV1.Delete("/tenant-channels/:id", adminHandler.DeactivateTenantChannel)
+	// ── Admin + tenantUser (tenant-isolated) ────────────────────────────────
+	// RequireTenant ensures tenantUser can only access their own tenant's data.
+	v1.Get("/providers", adminOrTenant, middleware.RequireTenant("tenant_id"), adminHandler.ListProviders)
+	v1.Post("/providers", adminOrTenant, adminHandler.CreateProvider)
+	v1.Get("/providers/:id", adminOrTenant, adminHandler.GetProvider)
+	v1.Put("/providers/:id", adminOrTenant, adminHandler.UpdateProvider)
+	v1.Delete("/providers/:id", adminOrTenant, adminHandler.DeactivateProvider)
 
-	apiV1.Post("/slot-generator", schedulingHandler.GenerateSlots)
-	apiV1.Get("/availability", schedulingHandler.Availability)
+	v1.Post("/providers/:id/availability", adminOrTenant, schedulingHandler.CreateAvailability)
+	v1.Get("/providers/:id/availability", adminOrTenant, schedulingHandler.ListAvailability)
+	v1.Post("/providers/:id/exceptions", adminOrTenant, schedulingHandler.CreateException)
+	v1.Get("/providers/:id/exceptions", adminOrTenant, schedulingHandler.ListExceptions)
 
-	apiV1.Post("/appointments", appointmentHandler.Create)
-	apiV1.Get("/appointments", appointmentHandler.List)
-	apiV1.Get("/appointments/:id", appointmentHandler.Get)
-	apiV1.Patch("/appointments/:id", appointmentHandler.Update)
-	apiV1.Delete("/appointments/:id", appointmentHandler.Delete)
+	v1.Get("/services", adminOrTenant, middleware.RequireTenant("tenant_id"), adminHandler.ListServices)
+	v1.Post("/services", adminOrTenant, adminHandler.CreateService)
+	v1.Get("/services/:id", adminOrTenant, adminHandler.GetService)
+	v1.Put("/services/:id", adminOrTenant, adminHandler.UpdateService)
+	v1.Delete("/services/:id", adminOrTenant, adminHandler.DeactivateService)
 
-	apiV1.Get("/conversations", conversationHandler.List)
-	apiV1.Get("/conversations/:id", conversationHandler.Get)
-	apiV1.Post("/conversations/message", conversationHandler.Message)
-	apiV1.Post("/inbound-messages", conversationHandler.InboundMessage)
+	v1.Get("/tenant-channels", adminOrTenant, middleware.RequireTenant("tenant_id"), adminHandler.ListTenantChannels)
+	v1.Post("/tenant-channels", adminOrTenant, adminHandler.CreateTenantChannel)
+	v1.Get("/tenant-channels/:id", adminOrTenant, adminHandler.GetTenantChannel)
+	v1.Put("/tenant-channels/:id", adminOrTenant, adminHandler.UpdateTenantChannel)
+	v1.Delete("/tenant-channels/:id", adminOrTenant, adminHandler.DeactivateTenantChannel)
+
+	// ── All authenticated users ─────────────────────────────────────────────
+	allRoles := middleware.RequireRole("adminUser", "tenantUser", "user")
+
+	v1.Get("/customers", allRoles, middleware.RequireTenant("tenant_id"), adminHandler.ListCustomers)
+	v1.Post("/customers", allRoles, adminHandler.CreateCustomer)
+	v1.Get("/customers/:id", allRoles, adminHandler.GetCustomer)
+	v1.Put("/customers/:id", allRoles, adminHandler.UpdateCustomer)
+
+	v1.Post("/slot-generator", allRoles, schedulingHandler.GenerateSlots)
+	v1.Get("/availability", allRoles, middleware.RequireTenant("tenant_id"), schedulingHandler.Availability)
+
+	v1.Post("/appointments", allRoles, appointmentHandler.Create)
+	v1.Get("/appointments", allRoles, middleware.RequireTenant("tenant_id"), appointmentHandler.List)
+	v1.Get("/appointments/:id", allRoles, appointmentHandler.Get)
+	v1.Patch("/appointments/:id", allRoles, appointmentHandler.Update)
+	v1.Delete("/appointments/:id", allRoles, appointmentHandler.Delete)
+
+	v1.Get("/conversations", adminOrTenant, middleware.RequireTenant("tenant_id"), conversationHandler.List)
+	v1.Get("/conversations/:id", adminOrTenant, conversationHandler.Get)
+	v1.Post("/conversations/message", adminOrTenant, conversationHandler.Message)
+	v1.Post("/inbound-messages", adminOrTenant, conversationHandler.InboundMessage)
 
 	return nil
 }
