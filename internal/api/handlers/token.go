@@ -79,5 +79,5 @@ func (h *TokenHandler) RenewAccessToken(c *fiber.Ctx) error {
 		AccessTokenExpiresAt: accessPayload.ExpiredAt,
 	}
 
-	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"response": rsp})
+	return c.Status(fiber.StatusOK).JSON(rsp)
 }
