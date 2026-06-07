@@ -2,7 +2,6 @@ package services
 
 import (
 	"encoding/json"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/mousav1/ticket/internal/api/dto"
@@ -123,12 +122,4 @@ func mapMessage(v db.ConversationMessage) dto.ConversationMessageResponse {
 		Metadata:  json.RawMessage(v.Metadata),
 		CreatedAt: v.CreatedAt,
 	}
-}
-
-func sameDayBounds(date string) (time.Time, time.Time, error) {
-	start, err := time.Parse("2006-01-02", date)
-	if err != nil {
-		return time.Time{}, time.Time{}, err
-	}
-	return start, start.Add(24 * time.Hour), nil
 }
