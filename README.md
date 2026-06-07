@@ -66,10 +66,10 @@ internal/
   api/
     dto/             Request/response DTOs
     handlers/        Fiber HTTP handlers
-    middleware/      JWT auth middleware
+    middleware/      JWT auth + role middleware
     response/        Shared HTTP error mapping
     validators/      Request validation wrapper
-    server.go        Fiber server setup
+    server.go        Fiber server setup (rate limiter)
   db/
     migration/       Database migrations
     query/           SQLC query definitions
@@ -77,7 +77,7 @@ internal/
   platform/
     pagination/      Pagination helpers
   repositories/      Persistence interfaces/adapters
-  routes/            Route registration
+  routes/            Route registration (inline RequireRole)
   services/          Business logic and transactions
   token/             JWT maker and payload
   util/              Config, password, random helpers
@@ -85,7 +85,7 @@ internal/
 
 ## Authentication
 
-Public auth endpoints:
+Public auth endpoints (rate-limited: 10 req/min per IP):
 
 ```text
 POST /register
@@ -113,7 +113,9 @@ curl -X POST http://localhost:8040/login \
 
 ## Role-Based Access Control (RBAC)
 
-The API implements three role levels:
+The API implements three role levels. Authorization is enforced **inline per route** using `middleware.RequireRole()`. The previous static `RoutePermissions` table has been removed.
+
+Multi-tenant isolation is enforced by `middleware.RequireTenant()` on every list endpoint that accepts a `tenant_id` query parameter. A `tenantUser` can only access resources that belong to their own tenant (validated against the JWT payload).
 
 ### **Admin User (`adminUser`)**
 - Full access to all API endpoints
@@ -122,10 +124,9 @@ The API implements three role levels:
 - Can link users to tenants and providers
 
 ### **Tenant User (`tenantUser`)**
-- Can manage providers, services within their tenant
-- Can view customers
-- Can manage user-provider associations
-- Scoped to their assigned tenant
+- Can manage providers, services, customers within **their own tenant only**
+- Can manage user-provider associations within their tenant
+- Scoped to their assigned tenant — cross-tenant access returns `403 Forbidden`
 
 ### **Regular User (`user`)**
 - Can manage customers and appointments
@@ -138,14 +139,17 @@ The API implements three role levels:
 ```text
 GET    /api/v1/users              List all users with pagination
 POST   /api/v1/users              Create user with role
-GET    /api/v1/users/:id          Get user details
-PUT    /api/v1/users/:id          Update user role/tenant
-DELETE /api/v1/users/:id          Delete user (CASCADE)
-POST   /api/v1/users/:id/tenant   Link user to tenant
-GET    /api/v1/users/:id/providers List user's providers
-POST   /api/v1/users/:id/provider Link user to provider
-DELETE /api/v1/users/:id/provider  Unlink user from provider
+GET    /api/v1/users/:id          Get user details         (id = UUID)
+PUT    /api/v1/users/:id          Update user role/tenant  (id = UUID)
+DELETE /api/v1/users/:id          Delete user (CASCADE)    (id = UUID)
+POST   /api/v1/users/:id/tenant   Link user to tenant      (id = UUID)
+GET    /api/v1/users/:id/providers List user's providers   (id = UUID)
+POST   /api/v1/users/:id/provider Link user to provider    (id = UUID)
+DELETE /api/v1/users/:id/provider  Unlink user from provider (id = UUID)
 ```
+
+> **Note:** User IDs are now UUID (consistent with all other domain entities).
+> The `UserResponse.id` field is `uuid.UUID` — update any clients that previously expected an integer.
 
 ### Role Assignment Example
 
@@ -178,7 +182,7 @@ curl -X POST http://localhost:8040/api/v1/users \
 
 Link user to provider (admin or tenant user):
 ```bash
-curl -X POST http://localhost:8040/api/v1/users/<USER_ID>/provider \
+curl -X POST http://localhost:8040/api/v1/users/<USER_UUID>/provider \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"provider_id":"<PROVIDER_UUID>"}'
@@ -186,7 +190,7 @@ curl -X POST http://localhost:8040/api/v1/users/<USER_ID>/provider \
 
 ## API Routes
 
-Administrative routes (Admin + Tenant User):
+Administrative routes (Admin only):
 
 ```text
 GET    /api/v1/tenants
@@ -194,17 +198,25 @@ POST   /api/v1/tenants
 GET    /api/v1/tenants/:id
 PUT    /api/v1/tenants/:id
 DELETE /api/v1/tenants/:id
+```
 
-GET    /api/v1/users              (Admin only)
-POST   /api/v1/users              (Admin only)
-GET    /api/v1/users/:id          (Admin only)
-PUT    /api/v1/users/:id          (Admin only)
-DELETE /api/v1/users/:id          (Admin only)
-POST   /api/v1/users/:id/tenant   (Admin only)
-GET    /api/v1/users/:id/providers (Admin only)
-POST   /api/v1/users/:id/provider (Admin + Tenant User)
-DELETE /api/v1/users/:id/provider (Admin + Tenant User)
+User management (Admin only):
 
+```text
+GET    /api/v1/users
+POST   /api/v1/users
+GET    /api/v1/users/:id
+PUT    /api/v1/users/:id
+DELETE /api/v1/users/:id
+POST   /api/v1/users/:id/tenant
+GET    /api/v1/users/:id/providers
+POST   /api/v1/users/:id/provider    (Admin + Tenant User)
+DELETE /api/v1/users/:id/provider    (Admin + Tenant User)
+```
+
+Provider / Service / Channel routes (Admin + Tenant User, tenant-isolated):
+
+```text
 GET    /api/v1/providers
 POST   /api/v1/providers
 GET    /api/v1/providers/:id
@@ -216,6 +228,12 @@ POST   /api/v1/services
 GET    /api/v1/services/:id
 PUT    /api/v1/services/:id
 DELETE /api/v1/services/:id
+
+GET    /api/v1/tenant-channels
+POST   /api/v1/tenant-channels
+GET    /api/v1/tenant-channels/:id
+PUT    /api/v1/tenant-channels/:id
+DELETE /api/v1/tenant-channels/:id
 ```
 
 Scheduling routes (All authenticated users):
@@ -254,19 +272,20 @@ Conversation and webhook routes:
 GET  /api/v1/conversations
 GET  /api/v1/conversations/:id
 POST /api/v1/conversations/message
+POST /api/v1/inbound-messages
 
-POST /api/v1/webhooks/evolution
+POST /api/v1/webhooks/evolution   (public — no JWT required)
 ```
 
-`POST /api/v1/webhooks/evolution` is public so Evolution can call it without a JWT. It resolves tenants through `tenant_channels.external_id`.
+`POST /api/v1/webhooks/evolution` is public so Evolution can call it without a JWT. It resolves tenants through `tenant_channels.external_id`. The handler supports both Evolution API v1 (flat JSON) and **v2 nested payload** (`data.key.remoteJid`, `data.message.conversation`).
 
 ## Pagination and Filters
 
-List endpoints support:
+All list endpoints use `page` / `page_size` parameters (consistent — `limit`/`offset` removed from `/users`):
 
 ```text
-page
-page_size
+page        (default: 1)
+page_size   (default: 20, max: 100)
 search
 active
 tenant_id
@@ -286,13 +305,32 @@ curl -H "Authorization: Bearer $TOKEN" \
   "http://localhost:8040/api/v1/availability?tenant_id=$TENANT_ID&provider_id=$PROVIDER_ID&date=2026-06-01"
 ```
 
+## Slot Generation
+
+The slot generator uses the tenant's IANA timezone so that slots are stored with correct local timestamps. Pass `timezone` in the request body:
+
+```bash
+curl -X POST http://localhost:8040/api/v1/slot-generator \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tenant_id": "<TENANT_UUID>",
+    "provider_id": "<PROVIDER_UUID>",
+    "number_of_weeks": 4,
+    "slot_minutes": 30,
+    "timezone": "America/Argentina/Buenos_Aires"
+  }'
+```
+
+`number_of_weeks` is capped at **12** to prevent runaway generation. If `timezone` is omitted the server falls back to UTC.
+
 ## Booking Flow
 
-1. Create tenant.
+1. Create tenant (include `timezone`, e.g. `"America/Argentina/Buenos_Aires"`).
 2. Create providers, services, and customers for the tenant.
 3. Add provider weekly availability.
 4. Add provider exceptions for blocked periods.
-5. Generate appointment slots.
+5. Generate appointment slots (include `timezone`).
 6. Query available slots.
 7. Book an appointment using an available slot.
 8. Appointment creation reserves the slot transactionally.
@@ -313,7 +351,7 @@ flowchart TD
 
     Provider --> Availability[Provider Availability]
     Provider --> Exceptions[Provider Exceptions]
-    Availability --> SlotGenerator[Slot Generator]
+    Availability --> SlotGenerator[Slot Generator with Timezone]
     Exceptions --> SlotGenerator
     SlotGenerator --> Slots[Appointment Slots]
 
@@ -336,44 +374,13 @@ flowchart TD
     TxReschedule --> ReserveNew[Reserve new slot]
     TxReschedule --> RescheduleEvent[Rescheduled Event]
 
-    WhatsApp[Evolution / WhatsApp] --> Webhook[POST /api/v1/webhooks/evolution]
+    WhatsApp[Evolution / WhatsApp v1 or v2] --> Webhook[POST /api/v1/webhooks/evolution]
     Webhook --> TenantChannel[Resolve tenant channel]
     TenantChannel --> WebhookLog[Store webhook log]
-    TenantChannel --> AutoCustomer[Find or create customer]
-    AutoCustomer --> Thread[Conversation thread]
+    TenantChannel --> UpsertCustomer[Upsert customer — race-safe]
+    UpsertCustomer --> Thread[Conversation thread]
     Thread --> Message[Conversation message]
     Message --> State[Conversation state]
-```
-
-## Manual Smoke Test
-
-The API was exercised on `http://localhost:8040` with a generated user:
-
-```text
-dev_1780267353
-```
-
-Verified:
-
-```text
-POST /register                         201
-POST /login                            200
-POST /tokens/renew_access              201
-GET  /user/info                        200
-PUT  /user/update                      200
-POST /user/password_change             200
-
-Tenant CRUD/list                       200/201
-Provider CRUD/list                     200/201
-Service CRUD/list                      200/201
-Customer CRUD/list                     200/201
-Provider availability create/list      201/200
-Provider exception create/list         201/200
-Slot generator                         201
-Availability query                     200
-Appointment create/list/get/patch/delete 200/201
-Conversation message/list/get          200/201
-Evolution webhook                      202
 ```
 
 ## Insomnia Collection
@@ -389,15 +396,18 @@ After login, copy:
 - `response.access_token` into `access_token`
 - `response.refresh_token` into `refresh_token`
 
-Then create resources in order and copy returned IDs into:
+Then create resources in order and copy returned IDs into the environment variables. Note that `user_id` is now a **UUID string** (not an integer).
 
-- `tenant_id`
-- `provider_id`
-- `service_id`
-- `customer_id`
-- `slot_id`
-- `appointment_id`
-- `conversation_id`
-- `tenant_channel_external_id`
+For the slot generator, include `"timezone": "America/Argentina/Buenos_Aires"` in the request body.
 
-For webhook testing, `tenant_channel_external_id` must match an active row in `tenant_channels.external_id`.
+For webhook testing, `tenant_channel_external_id` must match an active row in `tenant_channels.external_id`. The webhook endpoint accepts both the legacy flat payload and the Evolution v2 nested format.
+
+## Breaking Changes in `fixes` branch
+
+| Area | Change |
+|---|---|
+| `UserResponse.id` | Changed from `int32` to `uuid.UUID` |
+| `/api/v1/users/:id` path param | Changed from integer to UUID |
+| `POST /api/v1/slot-generator` | New optional field `timezone` (IANA string) |
+| `GET /api/v1/users` | Pagination params changed from `limit`/`offset` to `page`/`page_size` |
+| `POST /api/v1/webhooks/evolution` | Now parses Evolution v2 nested payload |
