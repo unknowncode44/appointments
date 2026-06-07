@@ -33,6 +33,7 @@ type ConversationService interface {
 type appointmentService struct {
 	repo repositories.WorkflowRepository
 }
+
 type conversationService struct {
 	repo repositories.WorkflowRepository
 }
@@ -45,6 +46,8 @@ func NewConversationService(repo repositories.WorkflowRepository) ConversationSe
 	return &conversationService{repo: repo}
 }
 
+// ── Appointment service ───────────────────────────────────────────────────────
+
 func (s *appointmentService) Create(ctx context.Context, req dto.AppointmentCreateRequest) (dto.AppointmentResponse, error) {
 	var created db.Appointment
 	err := s.repo.Store().ExecTx(ctx, func(q *db.Queries) error {
@@ -56,9 +59,15 @@ func (s *appointmentService) Create(ctx context.Context, req dto.AppointmentCrea
 			return response.ErrConflict
 		}
 		appt, err := q.CreateAppointment(ctx, db.CreateAppointmentParams{
-			TenantID: req.TenantID, CustomerID: req.CustomerID, ProviderID: slot.ProviderID, ServiceID: req.ServiceID,
-			SlotID: uuid.NullUUID{UUID: slot.ID, Valid: true}, StartAt: slot.StartAt, EndAt: slot.EndAt,
-			Status: "confirmed", Notes: repositories.Text(req.Notes),
+			TenantID:   req.TenantID,
+			CustomerID: req.CustomerID,
+			ProviderID: slot.ProviderID,
+			ServiceID:  req.ServiceID,
+			SlotID:     uuid.NullUUID{UUID: slot.ID, Valid: true},
+			StartAt:    slot.StartAt,
+			EndAt:      slot.EndAt,
+			Status:     "confirmed",
+			Notes:      repositories.Text(req.Notes),
 		})
 		if err != nil {
 			return err
@@ -79,7 +88,14 @@ func (s *appointmentService) Create(ctx context.Context, req dto.AppointmentCrea
 }
 
 func (s *appointmentService) List(ctx context.Context, tenantID uuid.UUID, providerID *uuid.UUID, customerID *uuid.UUID, status string, p pagination.Page) (pagination.Response[dto.AppointmentResponse], error) {
-	items, total, err := s.repo.ListAppointments(ctx, db.ListAppointmentsParams{TenantID: tenantID, ProviderID: providerID, CustomerID: customerID, Status: status, Limit: p.PageSize, Offset: p.Offset})
+	items, total, err := s.repo.ListAppointments(ctx, db.ListAppointmentsParams{
+		TenantID:   tenantID,
+		ProviderID: providerID,
+		CustomerID: customerID,
+		Status:     status,
+		Limit:      p.PageSize,
+		Offset:     p.Offset,
+	})
 	return paged(items, total, p, mapAppointment), err
 }
 
@@ -128,7 +144,16 @@ func (s *appointmentService) Update(ctx context.Context, id uuid.UUID, req dto.A
 			next.EndAt = newSlot.EndAt
 			eventType = "rescheduled"
 		}
-		appt, err := q.UpdateAppointment(ctx, db.UpdateAppointmentParams{ID: id, ProviderID: next.ProviderID, ServiceID: next.ServiceID, SlotID: next.SlotID, StartAt: next.StartAt, EndAt: next.EndAt, Status: next.Status, Notes: next.Notes})
+		appt, err := q.UpdateAppointment(ctx, db.UpdateAppointmentParams{
+			ID:         id,
+			ProviderID: next.ProviderID,
+			ServiceID:  next.ServiceID,
+			SlotID:     next.SlotID,
+			StartAt:    next.StartAt,
+			EndAt:      next.EndAt,
+			Status:     next.Status,
+			Notes:      next.Notes,
+		})
 		if err != nil {
 			return err
 		}
@@ -148,12 +173,16 @@ func (s *appointmentService) Update(ctx context.Context, id uuid.UUID, req dto.A
 	return mapAppointment(updated), err
 }
 
+// Cancel is now correctly on appointmentService (was previously on conversationService).
 func (s *appointmentService) Cancel(ctx context.Context, id uuid.UUID) (dto.AppointmentResponse, error) {
 	var cancelled db.Appointment
 	err := s.repo.Store().ExecTx(ctx, func(q *db.Queries) error {
 		current, err := q.GetAppointment(ctx, id)
 		if err != nil {
 			return err
+		}
+		if current.Status == "cancelled" {
+			return response.ErrConflict
 		}
 		if current.SlotID.Valid {
 			if _, err := q.ReleaseAppointmentSlot(ctx, current.SlotID.UUID); err != nil {
@@ -172,6 +201,8 @@ func (s *appointmentService) Cancel(ctx context.Context, id uuid.UUID) (dto.Appo
 	})
 	return mapAppointment(cancelled), err
 }
+
+// ── Conversation service ──────────────────────────────────────────────────────
 
 func (s *conversationService) ListThreads(ctx context.Context, tenantID uuid.UUID, p pagination.Page) ([]dto.ConversationThreadResponse, error) {
 	items, err := s.repo.ListThreads(ctx, db.ListConversationThreadsParams{TenantID: tenantID, Limit: p.PageSize, Offset: p.Offset})
@@ -202,11 +233,21 @@ func (s *conversationService) StoreMessage(ctx context.Context, req dto.Conversa
 		if err != nil {
 			return err
 		}
-		msg, err := q.CreateConversationMessage(ctx, db.CreateConversationMessageParams{ThreadID: thread.ID, Direction: req.Direction, Message: req.Message, Metadata: req.Metadata})
+		msg, err := q.CreateConversationMessage(ctx, db.CreateConversationMessageParams{
+			ThreadID:  thread.ID,
+			Direction: req.Direction,
+			Message:   req.Message,
+			Metadata:  req.Metadata,
+		})
 		if err != nil {
 			return err
 		}
-		_, err = q.UpsertConversationState(ctx, db.UpsertConversationStateParams{TenantID: req.TenantID, CustomerID: req.CustomerID, State: "message_received", Data: []byte(`{}`)})
+		_, err = q.UpsertConversationState(ctx, db.UpsertConversationStateParams{
+			TenantID:   req.TenantID,
+			CustomerID: req.CustomerID,
+			State:      "message_received",
+			Data:       []byte(`{}`),
+		})
 		out = msg
 		return err
 	})
@@ -218,7 +259,7 @@ func (s *conversationService) ProcessInboundMessage(ctx context.Context, req dto
 	if source == "" {
 		source = "n8n"
 	}
-	metadata := req.Metadata
+	metadata := []byte(req.Metadata)
 	if len(metadata) == 0 {
 		metadata, _ = json.Marshal(req)
 	}
@@ -235,21 +276,34 @@ func (s *conversationService) ProcessInboundMessage(ctx context.Context, req dto
 }
 
 func (s *conversationService) ProcessEvolutionWebhook(ctx context.Context, req dto.EvolutionWebhookRequest, raw []byte) error {
-	externalID := req.ExternalID
+	// Resolve external_id: prefer nested instance field, fall back to legacy flat field.
+	externalID := req.Instance
 	if externalID == "" {
-		externalID = req.Instance
+		externalID = req.ExternalID
 	}
-	externalCustomer := req.From
+
+	// Resolve sender phone: prefer nested remoteJid, fall back to legacy flat fields.
+	externalCustomer := req.Data.Key.RemoteJid
+	if externalCustomer == "" {
+		externalCustomer = req.From
+	}
 	if externalCustomer == "" {
 		externalCustomer = req.Phone
 	}
+
 	if externalID == "" || externalCustomer == "" {
 		return response.ErrInvalidInput
 	}
-	message := req.Message
-	if message == "" && len(req.Data) > 0 {
-		message = string(req.Data)
+
+	// Resolve message text: prefer nested conversation body, then extendedText, then legacy flat field.
+	message := req.Data.Message.Conversation
+	if message == "" && req.Data.Message.ExtendedTextMessage != nil {
+		message = req.Data.Message.ExtendedTextMessage.Text
 	}
+	if message == "" {
+		message = req.Message
+	}
+
 	metadata, _ := json.Marshal(req)
 	_, err := s.storeInboundMessage(ctx, inboundMessage{
 		ChannelExternalID:  externalID,
@@ -273,6 +327,9 @@ type inboundMessage struct {
 	State              string
 }
 
+// storeInboundMessage resolves the tenant channel, finds-or-creates the customer
+// (upsert-safe to handle concurrent webhooks for the same number), and stores
+// the conversation message — all inside a single transaction.
 func (s *conversationService) storeInboundMessage(ctx context.Context, req inboundMessage) (db.ConversationMessage, error) {
 	var out db.ConversationMessage
 	if req.ChannelExternalID == "" || req.ExternalCustomerID == "" || req.Message == "" {
@@ -289,22 +346,28 @@ func (s *conversationService) storeInboundMessage(ctx context.Context, req inbou
 		if err != nil {
 			return err
 		}
-		if _, err := q.CreateWebhookLog(ctx, db.CreateWebhookLogParams{TenantID: uuid.NullUUID{UUID: channel.TenantID, Valid: true}, Source: req.Source, Payload: req.LogPayload}); err != nil {
+
+		if _, err := q.CreateWebhookLog(ctx, db.CreateWebhookLogParams{
+			TenantID: uuid.NullUUID{UUID: channel.TenantID, Valid: true},
+			Source:   req.Source,
+			Payload:  req.LogPayload,
+		}); err != nil {
 			return err
 		}
-		customer, err := q.GetCustomerByChannel(ctx, db.GetCustomerByChannelParams{TenantChannelID: channel.ID, ExternalIdentifier: req.ExternalCustomerID})
-		if errors.Is(err, pgx.ErrNoRows) {
-			customer, err = q.CreateCustomer(ctx, db.CreateCustomerParams{TenantID: channel.TenantID})
-			if err != nil {
-				return err
-			}
-			if _, err := q.CreateCustomerChannel(ctx, db.CreateCustomerChannelParams{CustomerID: customer.ID, TenantChannelID: channel.ID, ExternalIdentifier: req.ExternalCustomerID}); err != nil {
-				return err
-			}
-		}
+
+		// Upsert-safe find-or-create: use UpsertCustomerChannel which internally
+		// does INSERT ... ON CONFLICT DO NOTHING and then selects the existing row.
+		// This eliminates the race condition between two concurrent webhooks for
+		// the same WhatsApp number.
+		customer, err := q.UpsertCustomerByChannel(ctx, db.UpsertCustomerByChannelParams{
+			TenantID:           channel.TenantID,
+			TenantChannelID:    channel.ID,
+			ExternalIdentifier: req.ExternalCustomerID,
+		})
 		if err != nil {
 			return err
 		}
+
 		thread, err := q.GetConversationThreadByCustomer(ctx, db.CreateConversationThreadParams{TenantID: channel.TenantID, CustomerID: customer.ID})
 		if errors.Is(err, pgx.ErrNoRows) {
 			thread, err = q.CreateConversationThread(ctx, db.CreateConversationThreadParams{TenantID: channel.TenantID, CustomerID: customer.ID})
@@ -312,11 +375,23 @@ func (s *conversationService) storeInboundMessage(ctx context.Context, req inbou
 		if err != nil {
 			return err
 		}
-		msg, err := q.CreateConversationMessage(ctx, db.CreateConversationMessageParams{ThreadID: thread.ID, Direction: "in", Message: req.Message, Metadata: req.Metadata})
+
+		msg, err := q.CreateConversationMessage(ctx, db.CreateConversationMessageParams{
+			ThreadID:  thread.ID,
+			Direction: "in",
+			Message:   req.Message,
+			Metadata:  req.Metadata,
+		})
 		if err != nil {
 			return err
 		}
-		_, err = q.UpsertConversationState(ctx, db.UpsertConversationStateParams{TenantID: channel.TenantID, CustomerID: customer.ID, State: req.State, Data: req.Metadata})
+
+		_, err = q.UpsertConversationState(ctx, db.UpsertConversationStateParams{
+			TenantID:   channel.TenantID,
+			CustomerID: customer.ID,
+			State:      req.State,
+			Data:       req.Metadata,
+		})
 		out = msg
 		return err
 	})
