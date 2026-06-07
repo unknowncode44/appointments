@@ -136,11 +136,15 @@ type ExceptionResponse struct {
 	CreatedAt  time.Time `json:"created_at"`
 }
 
+// SlotGeneratorRequest caps number_of_weeks at 12 to prevent runaway slot generation.
+// Timezone must be a valid IANA timezone string (e.g. "America/Argentina/Buenos_Aires").
+// If omitted, the server falls back to UTC.
 type SlotGeneratorRequest struct {
 	TenantID      uuid.UUID `json:"tenant_id" validate:"required"`
 	ProviderID    uuid.UUID `json:"provider_id" validate:"required"`
-	NumberOfWeeks int       `json:"number_of_weeks" validate:"required,min=1,max=26"`
+	NumberOfWeeks int       `json:"number_of_weeks" validate:"required,min=1,max=12"`
 	SlotMinutes   int       `json:"slot_minutes,omitempty"`
+	Timezone      string    `json:"timezone,omitempty"`
 }
 
 type SlotGeneratorResponse struct {
@@ -221,16 +225,45 @@ type InboundMessageRequest struct {
 	Metadata                json.RawMessage `json:"metadata"`
 }
 
+// EvolutionWebhookRequest models the Evolution API v2 payload.
+// Top-level fields (instance, external_id, from, phone, message) are kept
+// for backward-compat. The nested Data field handles real Evolution v2 messages.
 type EvolutionWebhookRequest struct {
-	Instance   string          `json:"instance"`
-	ExternalID string          `json:"external_id"`
-	From       string          `json:"from"`
-	Phone      string          `json:"phone"`
-	Message    string          `json:"message"`
-	Event      string          `json:"event"`
-	Data       json.RawMessage `json:"data"`
+	// Legacy / simple fields
+	Instance   string `json:"instance"`
+	ExternalID string `json:"external_id"`
+	From       string `json:"from"`
+	Phone      string `json:"phone"`
+	Message    string `json:"message"`
+	Event      string `json:"event"`
+
+	// Evolution API v2 nested payload
+	Data EvolutionData `json:"data"`
 }
 
+type EvolutionData struct {
+	Key          EvolutionKey          `json:"key"`
+	Message      EvolutionMessageBody  `json:"message"`
+	PushName     string                `json:"pushName"`
+	MessageType  string                `json:"messageType"`
+}
+
+type EvolutionKey struct {
+	RemoteJid string `json:"remoteJid"`
+	FromMe    bool   `json:"fromMe"`
+	ID        string `json:"id"`
+}
+
+type EvolutionMessageBody struct {
+	Conversation         string `json:"conversation"`
+	ExtendedTextMessage  *EvolutionExtendedText `json:"extendedTextMessage,omitempty"`
+}
+
+type EvolutionExtendedText struct {
+	Text string `json:"text"`
+}
+
+// UserCreateRequest — admin creates a user with an explicit role.
 type UserCreateRequest struct {
 	Username string     `json:"username" validate:"required,alphanum"`
 	Password string     `json:"password" validate:"required,min=6"`
@@ -245,8 +278,9 @@ type UserUpdateRequest struct {
 	TenantID *uuid.UUID `json:"tenant_id"`
 }
 
+// UserResponse uses uuid.UUID for ID — consistent with all other domain entities.
 type UserResponse struct {
-	ID        int32      `json:"id"`
+	ID        uuid.UUID  `json:"id"`
 	Username  string     `json:"username"`
 	FullName  string     `json:"full_name"`
 	Role      string     `json:"role"`
