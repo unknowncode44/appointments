@@ -265,7 +265,7 @@ type EvolutionExtendedText struct {
 
 // UserCreateRequest — admin creates a user with an explicit role.
 type UserCreateRequest struct {
-	Username string     `json:"username" validate:"required,alphanum"`
+	Username string     `json:"username" validate:"required,min=3"`
 	Password string     `json:"password" validate:"required,min=6"`
 	FullName string     `json:"full_name" validate:"required"`
 	Role     string     `json:"role" validate:"required,oneof=adminUser tenantUser user"`
@@ -278,9 +278,8 @@ type UserUpdateRequest struct {
 	TenantID *uuid.UUID `json:"tenant_id"`
 }
 
-// UserResponse uses uuid.UUID for ID — consistent with all other domain entities.
 type UserResponse struct {
-	ID        uuid.UUID  `json:"id"`
+	ID        int32      `json:"id"`
 	Username  string     `json:"username"`
 	FullName  string     `json:"full_name"`
 	Role      string     `json:"role"`
