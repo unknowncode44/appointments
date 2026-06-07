@@ -5,175 +5,97 @@ import (
 	"fmt"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 	"github.com/mousav1/ticket/internal/token"
 )
 
-type Permission struct {
-	Method string
-	Path   string
-	Roles  []string
-}
+const AuthorizationPayloadKey = "authorization_payload"
 
-var RoutePermissions = []Permission{
-	// Admin only routes
-	{Method: "GET", Path: "/api/v1/tenants", Roles: []string{"adminUser"}},
-	{Method: "POST", Path: "/api/v1/tenants", Roles: []string{"adminUser"}},
-	{Method: "GET", Path: "/api/v1/tenants/:id", Roles: []string{"adminUser"}},
-	{Method: "PUT", Path: "/api/v1/tenants/:id", Roles: []string{"adminUser"}},
-	{Method: "DELETE", Path: "/api/v1/tenants/:id", Roles: []string{"adminUser"}},
-	{Method: "GET", Path: "/api/v1/users", Roles: []string{"adminUser"}},
-	{Method: "POST", Path: "/api/v1/users", Roles: []string{"adminUser"}},
-	{Method: "GET", Path: "/api/v1/users/:id", Roles: []string{"adminUser"}},
-	{Method: "PUT", Path: "/api/v1/users/:id", Roles: []string{"adminUser"}},
-	{Method: "DELETE", Path: "/api/v1/users/:id", Roles: []string{"adminUser"}},
-	{Method: "POST", Path: "/api/v1/users/:id/tenant", Roles: []string{"adminUser"}},
-	{Method: "POST", Path: "/api/v1/users/:id/provider", Roles: []string{"adminUser", "tenantUser"}},
-
-	// TenantUser and Admin routes
-	{Method: "GET", Path: "/api/v1/providers", Roles: []string{"adminUser", "tenantUser"}},
-	{Method: "POST", Path: "/api/v1/providers", Roles: []string{"adminUser", "tenantUser"}},
-	{Method: "GET", Path: "/api/v1/providers/:id", Roles: []string{"adminUser", "tenantUser"}},
-	{Method: "PUT", Path: "/api/v1/providers/:id", Roles: []string{"adminUser", "tenantUser"}},
-	{Method: "DELETE", Path: "/api/v1/providers/:id", Roles: []string{"adminUser", "tenantUser"}},
-	{Method: "GET", Path: "/api/v1/services", Roles: []string{"adminUser", "tenantUser"}},
-	{Method: "POST", Path: "/api/v1/services", Roles: []string{"adminUser", "tenantUser"}},
-	{Method: "GET", Path: "/api/v1/services/:id", Roles: []string{"adminUser", "tenantUser"}},
-	{Method: "PUT", Path: "/api/v1/services/:id", Roles: []string{"adminUser", "tenantUser"}},
-	{Method: "DELETE", Path: "/api/v1/services/:id", Roles: []string{"adminUser", "tenantUser"}},
-	{Method: "GET", Path: "/api/v1/tenant-channels", Roles: []string{"adminUser", "tenantUser"}},
-	{Method: "POST", Path: "/api/v1/tenant-channels", Roles: []string{"adminUser", "tenantUser"}},
-	{Method: "GET", Path: "/api/v1/tenant-channels/:id", Roles: []string{"adminUser", "tenantUser"}},
-	{Method: "PUT", Path: "/api/v1/tenant-channels/:id", Roles: []string{"adminUser", "tenantUser"}},
-	{Method: "DELETE", Path: "/api/v1/tenant-channels/:id", Roles: []string{"adminUser", "tenantUser"}},
-
-	// All authenticated users
-	{Method: "GET", Path: "/api/v1/customers", Roles: []string{"adminUser", "tenantUser", "user"}},
-	{Method: "POST", Path: "/api/v1/customers", Roles: []string{"adminUser", "tenantUser", "user"}},
-	{Method: "GET", Path: "/api/v1/customers/:id", Roles: []string{"adminUser", "tenantUser", "user"}},
-	{Method: "PUT", Path: "/api/v1/customers/:id", Roles: []string{"adminUser", "tenantUser", "user"}},
-	{Method: "POST", Path: "/api/v1/providers/:id/availability", Roles: []string{"adminUser", "tenantUser", "user"}},
-	{Method: "GET", Path: "/api/v1/providers/:id/availability", Roles: []string{"adminUser", "tenantUser", "user"}},
-	{Method: "POST", Path: "/api/v1/providers/:id/exceptions", Roles: []string{"adminUser", "tenantUser", "user"}},
-	{Method: "GET", Path: "/api/v1/providers/:id/exceptions", Roles: []string{"adminUser", "tenantUser", "user"}},
-	{Method: "POST", Path: "/api/v1/slot-generator", Roles: []string{"adminUser", "tenantUser", "user"}},
-	{Method: "GET", Path: "/api/v1/availability", Roles: []string{"adminUser", "tenantUser", "user"}},
-	{Method: "POST", Path: "/api/v1/appointments", Roles: []string{"adminUser", "tenantUser", "user"}},
-	{Method: "GET", Path: "/api/v1/appointments", Roles: []string{"adminUser", "tenantUser", "user"}},
-	{Method: "GET", Path: "/api/v1/appointments/:id", Roles: []string{"adminUser", "tenantUser", "user"}},
-	{Method: "PATCH", Path: "/api/v1/appointments/:id", Roles: []string{"adminUser", "tenantUser", "user"}},
-	{Method: "DELETE", Path: "/api/v1/appointments/:id", Roles: []string{"adminUser", "tenantUser", "user"}},
-	{Method: "GET", Path: "/api/v1/conversations", Roles: []string{"adminUser", "tenantUser"}},
-	{Method: "GET", Path: "/api/v1/conversations/:id", Roles: []string{"adminUser", "tenantUser"}},
-	{Method: "POST", Path: "/api/v1/conversations/message", Roles: []string{"adminUser", "tenantUser"}},
-	{Method: "POST", Path: "/api/v1/inbound-messages", Roles: []string{"adminUser", "tenantUser"}},
-}
-
+// RoleMiddleware is kept as a no-op pass-through so existing route wiring
+// compiles unchanged. Per-route authorization is enforced by RequireRole()
+// applied inline in web.go.
 func RoleMiddleware() fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		payload, ok := c.Locals(AuthorizationPayloadKey).(*token.Payload)
+		return c.Next()
+	}
+}
 
+// RequireRole rejects requests whose JWT payload role is not in allowedRoles.
+func RequireRole(allowedRoles ...string) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		payload, ok := c.Locals(AuthorizationPayloadKey).(*token.Payload)
 		if !ok {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Role Middleware: invalid authorization payload"})
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid authorization payload"})
+		}
+		for _, role := range allowedRoles {
+			if payload.Role == role {
+				return c.Next()
+			}
+		}
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"error": fmt.Sprintf("role %s is not allowed to access this resource", payload.Role),
+		})
+	}
+}
+
+// RequireTenant enforces that tenantUser requests can only operate on their
+// own tenant. It reads the tenant_id from:
+//  1. The query param named by queryParam (e.g. "tenant_id"), OR
+//  2. Falls back to the JSON body field if the query param is absent.
+//
+// adminUser bypasses the check. Regular "user" role bypasses too (they are
+// scoped at the appointment/customer level, not at tenant level).
+func RequireTenant(queryParam string) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		payload, ok := c.Locals(AuthorizationPayloadKey).(*token.Payload)
+		if !ok {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid authorization payload"})
 		}
 
-		method := c.Method()
-		path := c.Path()
+		// Only enforce for tenantUser; admin sees everything.
+		if payload.Role != "tenantUser" {
+			return c.Next()
+		}
 
-		// Check if route requires authorization
-		for _, perm := range RoutePermissions {
-			if matchRoute(perm.Path, path) && perm.Method == method {
-				// Check if user has required role
-				allowed := false
-				for _, role := range perm.Roles {
-					if role == payload.Role {
-						allowed = true
-						break
-					}
-				}
+		if payload.TenantID == nil {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "tenant user has no tenant assigned"})
+		}
 
-				if !allowed {
-					return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-						"error": fmt.Sprintf("role %s is not allowed to access this resource", payload.Role),
-					})
+		// Try query param first, then fall back to body field of same name.
+		raw := c.Query(queryParam)
+		if raw == "" {
+			// Try to read from the parsed body map (works for JSON bodies).
+			var body map[string]interface{}
+			if err := c.BodyParser(&body); err == nil {
+				if v, ok := body[queryParam].(string); ok {
+					raw = v
 				}
 			}
+		}
+
+		if raw == "" {
+			// No tenant_id provided — let the downstream handler reject it.
+			return c.Next()
+		}
+
+		requestedTenantID, err := uuid.Parse(raw)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid tenant_id"})
+		}
+
+		if requestedTenantID != *payload.TenantID {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "forbidden: tenant mismatch"})
 		}
 
 		return c.Next()
 	}
 }
 
-func matchRoute(pattern, path string) bool {
-	if pattern == path {
-		return true
-	}
-
-	// Simple param matching for patterns like /api/v1/providers/:id
-	patternParts := splitPath(pattern)
-	pathParts := splitPath(path)
-
-	if len(patternParts) != len(pathParts) {
-		return false
-	}
-
-	for i, p := range patternParts {
-		if p != pathParts[i] && !isParam(p) {
-			return false
-		}
-	}
-
-	return true
-}
-
-func splitPath(path string) []string {
-	if path == "" {
-		return []string{}
-	}
-	parts := []string{}
-	current := ""
-	for _, ch := range path {
-		if ch == '/' {
-			if current != "" {
-				parts = append(parts, current)
-				current = ""
-			}
-		} else {
-			current += string(ch)
-		}
-	}
-	if current != "" {
-		parts = append(parts, current)
-	}
-	return parts
-}
-
-func isParam(part string) bool {
-	return len(part) > 0 && part[0] == ':'
-}
-
-func RequireRole(allowedRoles ...string) fiber.Handler {
-	return func(c *fiber.Ctx) error {
-		payload, ok := c.Locals(AuthorizationPayloadKey).(*token.Payload)
-		if !ok {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Require Role: invalid authorization payload"})
-		}
-
-		for _, role := range allowedRoles {
-			if payload.Role == role {
-				return c.Next()
-			}
-		}
-
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-			"error": fmt.Sprintf("role %s is not allowed", payload.Role),
-		})
-	}
-}
-
+// ExtractUserFromContext returns the JWT payload stored by AuthMiddleware.
 func ExtractUserFromContext(c *fiber.Ctx) (*token.Payload, error) {
 	payload, ok := c.Locals(AuthorizationPayloadKey).(*token.Payload)
 	if !ok {
-		return nil, errors.New("ExtractUserFromContext: invalid authorization payload")
+		return nil, errors.New("invalid authorization payload")
 	}
 	return payload, nil
 }
