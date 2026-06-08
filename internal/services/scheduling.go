@@ -2,7 +2,6 @@ package services
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -120,8 +119,8 @@ func (s *schedulingService) GenerateSlots(ctx context.Context, req dto.SlotGener
 			if int(av.Weekday) != int(day.Weekday()) {
 				continue
 			}
-			cursor := combineInLoc(day, av.StartTime, loc)
-			periodEnd := combineInLoc(day, av.EndTime, loc)
+			cursor := combineInLoc(day, av.StartTime.Format("15:04:05"), loc)
+			periodEnd := combineInLoc(day, av.EndTime.Format("15:04:05"), loc)
 			for cursor.Add(time.Duration(slotMinutes) * time.Minute).Compare(periodEnd) <= 0 {
 				slotEnd := cursor.Add(time.Duration(slotMinutes) * time.Minute)
 				if !overlapsAny(cursor, slotEnd, exceptions) {
@@ -207,16 +206,6 @@ func mapSlice[I any, O any](items []I, mapper func(I) O) []O {
 		out = append(out, mapper(item))
 	}
 	return out
-}
-
-// paged is a generic pagination wrapper shared across service packages.
-func paged[I any, O any](items []I, total int64, p pagination.Page, mapper func(I) O) (pagination.Response[O], error) {
-	return pagination.Response[O]{
-		Data:       mapSlice(items, mapper),
-		Total:      total,
-		Page:       p.Page,
-		PageSize:   int(p.PageSize),
-	}, nil
 }
 
 // pgxErrNoRows shadows the pgx import for internal use.

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/go-playground/validator/v10"
@@ -24,7 +25,7 @@ type UserHandler struct {
 
 // CreateUserRequest uses validate tags (not binding) so go-playground/validator picks them up.
 type CreateUserRequest struct {
-	Username string `json:"username" validate:"required,alphanum"`
+	Username string `json:"username" validate:"required,min=3"`
 	Password string `json:"password" validate:"required,min=6"`
 	FullName string `json:"full_name" validate:"required"`
 }
@@ -54,7 +55,7 @@ type loginUserResponse struct {
 }
 
 type loginUserRequest struct {
-	Username string `json:"username" validate:"required,alphanum"`
+	Username string `json:"username" validate:"required,min=3"`
 	Password string `json:"password" validate:"required,min=6"`
 }
 
@@ -108,7 +109,7 @@ func (h *UserHandler) LoginUser(c *fiber.Ctx) error {
 	if err := validate.Struct(&req); err != nil {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
-	user, err := h.Store.GetUserByUsername(c.Context(), req.Username)
+	user, err := h.Store.GetUserByUsernameFull(c.Context(), req.Username)
 	if err != nil {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid credentials"})
 	}
@@ -150,7 +151,7 @@ func (h *UserHandler) GetUserProfile(c *fiber.Ctx) error {
 	if !ok {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid authorization payload"})
 	}
-	user, err := h.Store.GetUserByUsername(c.Context(), payload.Username)
+	user, err := h.Store.GetUserByUsernameFull(c.Context(), payload.Username)
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -169,7 +170,7 @@ func (h *UserHandler) UpdateUserProfile(c *fiber.Ctx) error {
 	if err := validate.Struct(&req); err != nil {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
-	user, err := h.Store.UpdateUserProfile(c.Context(), db.UpdateUserProfileParams{
+	user, err := h.Store.UpdateUser(c.Context(), db.UpdateUserParams{
 		Username: payload.Username,
 		FullName: req.FullName,
 	})
@@ -233,13 +234,12 @@ func (h *UserHandler) ListUsers(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(resp)
 }
 
-// GetUserByID uses uuid.UUID — consistent with all other domain entities.
 func (h *UserHandler) GetUserByID(c *fiber.Ctx) error {
-	userID, err := uuid.Parse(c.Params("id"))
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid user id"})
 	}
-	user, err := h.Store.GetUserByIDFull(c.Context(), userID)
+	user, err := h.Store.GetUserByIDFull(c.Context(), int32(id))
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "user not found"})
 	}
@@ -289,9 +289,8 @@ func (h *UserHandler) CreateUserAdmin(c *fiber.Ctx) error {
 	})
 }
 
-// UpdateUser uses uuid.UUID for the path param.
 func (h *UserHandler) UpdateUser(c *fiber.Ctx) error {
-	userID, err := uuid.Parse(c.Params("id"))
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid user id"})
 	}
@@ -300,7 +299,7 @@ func (h *UserHandler) UpdateUser(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 	user, err := h.Store.UpdateUserRole(c.Context(), db.UpdateUserRoleParams{
-		ID:       userID,
+		ID:       int32(id),
 		Role:     db.UserRole(req.Role),
 		TenantID: req.TenantID,
 	})
@@ -317,21 +316,19 @@ func (h *UserHandler) UpdateUser(c *fiber.Ctx) error {
 	})
 }
 
-// DeleteUser uses uuid.UUID for the path param.
 func (h *UserHandler) DeleteUser(c *fiber.Ctx) error {
-	userID, err := uuid.Parse(c.Params("id"))
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid user id"})
 	}
-	if err = h.Store.DeleteUser(c.Context(), userID); err != nil {
+	if err = h.Store.DeleteUser(c.Context(), int32(id)); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "could not delete user"})
 	}
 	return c.Status(fiber.StatusNoContent).Send(nil)
 }
 
-// LinkUserToTenant uses uuid.UUID for the path param.
 func (h *UserHandler) LinkUserToTenant(c *fiber.Ctx) error {
-	userID, err := uuid.Parse(c.Params("id"))
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid user id"})
 	}
@@ -343,7 +340,7 @@ func (h *UserHandler) LinkUserToTenant(c *fiber.Ctx) error {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 	user, err := h.Store.UpdateUserTenant(c.Context(), db.UpdateUserTenantParams{
-		ID:       userID,
+		ID:       int32(id),
 		TenantID: &req.TenantID,
 	})
 	if err != nil {
@@ -359,9 +356,8 @@ func (h *UserHandler) LinkUserToTenant(c *fiber.Ctx) error {
 	})
 }
 
-// LinkUserToProvider uses uuid.UUID for the path param.
 func (h *UserHandler) LinkUserToProvider(c *fiber.Ctx) error {
-	userID, err := uuid.Parse(c.Params("id"))
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid user id"})
 	}
@@ -373,7 +369,7 @@ func (h *UserHandler) LinkUserToProvider(c *fiber.Ctx) error {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 	if err = h.Store.AddUserProvider(c.Context(), db.AddUserProviderParams{
-		UserID:     userID,
+		UserID:     int32(id),
 		ProviderID: req.ProviderID,
 	}); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "could not link user to provider"})
@@ -381,9 +377,8 @@ func (h *UserHandler) LinkUserToProvider(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusNoContent).Send(nil)
 }
 
-// RemoveUserFromProvider uses uuid.UUID for the path param.
 func (h *UserHandler) RemoveUserFromProvider(c *fiber.Ctx) error {
-	userID, err := uuid.Parse(c.Params("id"))
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid user id"})
 	}
@@ -392,7 +387,7 @@ func (h *UserHandler) RemoveUserFromProvider(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid provider_id"})
 	}
 	if err = h.Store.RemoveUserProvider(c.Context(), db.RemoveUserProviderParams{
-		UserID:     userID,
+		UserID:     int32(id),
 		ProviderID: providerID,
 	}); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "could not remove user from provider"})
@@ -400,13 +395,12 @@ func (h *UserHandler) RemoveUserFromProvider(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusNoContent).Send(nil)
 }
 
-// GetUserProviders uses uuid.UUID for the path param.
 func (h *UserHandler) GetUserProviders(c *fiber.Ctx) error {
-	userID, err := uuid.Parse(c.Params("id"))
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid user id"})
 	}
-	providers, err := h.Store.ListUserProviders(c.Context(), userID)
+	providers, err := h.Store.ListUserProviders(c.Context(), int32(id))
 	if err != nil {
 		return response.Error(c, err)
 	}

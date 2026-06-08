@@ -1,16 +1,16 @@
 # Stage 1: Build the Go binary
 FROM golang:1.23-alpine AS builder
 WORKDIR /app
-COPY go.mod go.sum .
+COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN go build -o main main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -o main main.go
 
-# Stage 2: Create a minimal Docker image with the Go binary
+# Stage 2: Minimal runtime image
 FROM alpine:latest
+RUN apk --no-cache add ca-certificates tzdata
 WORKDIR /app
 COPY --from=builder /app/main .
-COPY app.env .
-# COPY internal/db/migration ./migrations
+COPY internal/db/migration ./migrations
 EXPOSE 8080
-CMD [ "/app/main" ]
+CMD ["/app/main"]
