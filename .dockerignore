@@ -1,0 +1,7 @@
+app.env
+*.env
+.git
+.gitignore
+tmp/
+docs/
+*.md
