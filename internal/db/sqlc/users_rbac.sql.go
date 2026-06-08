@@ -253,13 +253,3 @@ func (q *Queries) ListUserProviders(ctx context.Context, userID int32) ([]uuid.U
 	return items, nil
 }
 
-const getUserProviderCount = `-- name: GetUserProviderCount :one
-SELECT COUNT(*) as count FROM user_providers WHERE user_id = $1
-`
-
-func (q *Queries) GetUserProviderCount(ctx context.Context, userID int32) (int64, error) {
-	row := q.db.QueryRow(ctx, getUserProviderCount, userID)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
