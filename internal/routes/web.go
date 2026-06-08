@@ -27,6 +27,9 @@ func SetupRoutes(server *api.Server) error {
 	appointmentHandler := handlers.NewAppointmentMVPHandler(services.NewAppointmentService(workflowRepo))
 	conversationHandler := handlers.NewConversationMVPHandler(services.NewConversationService(workflowRepo))
 
+	// ── WhatsApp proxy (tenantUser only) ───────────────────────────────────
+	whatsappHandler := handlers.NewWhatsappHandler(server.Store, server.Config)
+
 	// ── Webhook (public — Evolution calls without JWT) ──────────────────────
 	server.App.Post("/api/v1/webhooks/evolution", conversationHandler.EvolutionWebhook)
 
@@ -109,6 +112,15 @@ func SetupRoutes(server *api.Server) error {
 	v1.Get("/conversations/:id", adminOrTenant, conversationHandler.Get)
 	v1.Post("/conversations/message", adminOrTenant, conversationHandler.Message)
 	v1.Post("/inbound-messages", adminOrTenant, conversationHandler.InboundMessage)
+
+	// ── WhatsApp proxy (tenantUser only) ────────────────────────────────────
+	tenantOnly := middleware.RequireRole("tenantUser")
+	wa := v1.Group("/whatsapp", tenantOnly)
+	wa.Post("/instance", whatsappHandler.CreateInstance)
+	wa.Get("/instance/status", whatsappHandler.GetStatus)
+	wa.Get("/instance/qr", whatsappHandler.GetQR)
+	wa.Delete("/instance/logout", whatsappHandler.Logout)
+	wa.Delete("/instance", whatsappHandler.DeleteInstance)
 
 	return nil
 }

@@ -22,6 +22,8 @@ type Config struct {
 	AccessTokenDuration  time.Duration `mapstructure:"ACCESS_TOKEN_DURATION"`
 	RefreshTokenDuration time.Duration `mapstructure:"REFRESH_TOKEN_DURATION"`
 	MigrationURL         string        `mapstructure:"MIGRATION_URL"`
+	EvoAPIURL            string        `mapstructure:"EVO_API_URL"`
+	EvoAPIKey            string        `mapstructure:"EVO_API_KEY"`
 }
 
 // LoadConfig reads configuration from file or environment variables.
