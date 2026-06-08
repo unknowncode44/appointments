@@ -52,5 +52,3 @@ WHERE user_id = $1 AND provider_id = $2;
 SELECT provider_id FROM user_providers
 WHERE user_id = $1;
 
--- name: GetUserProviderCount :one
-SELECT COUNT(*) as count FROM user_providers WHERE user_id = $1;
