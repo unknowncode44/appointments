@@ -253,8 +253,15 @@ func (h *UserHandler) GetUserByID(c *fiber.Ctx) error {
 	})
 }
 
-// CreateUserAdmin creates a user with explicit role (admin only).
+// CreateUserAdmin creates a user with explicit role.
+// adminUser: full control over role and tenant_id.
+// tenantUser: can only create role=user, tenant_id is forced to their own.
 func (h *UserHandler) CreateUserAdmin(c *fiber.Ctx) error {
+	caller, err := middleware.ExtractUserFromContext(c)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid authorization payload"})
+	}
+
 	var req dto.UserCreateRequest
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
@@ -262,6 +269,18 @@ func (h *UserHandler) CreateUserAdmin(c *fiber.Ctx) error {
 	if err := validate.Struct(&req); err != nil {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
+
+	if caller.Role == "tenantUser" {
+		if req.Role != "user" {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tenantUser can only create users with role 'user'"})
+		}
+		if caller.TenantID == nil {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "tenantUser has no tenant assigned"})
+		}
+		req.Role = "user"
+		req.TenantID = caller.TenantID
+	}
+
 	hashedPassword, err := util.HashPassword(req.Password)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "could not hash password"})
