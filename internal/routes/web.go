@@ -43,18 +43,22 @@ func SetupRoutes(server *api.Server) error {
 
 	v1 := auth.Group("/api/v1")
 
-	// ── Admin-only: tenant management ───────────────────────────────────────
+	// ── Role shortcuts ───────────────────────────────────────────────────────
 	adminOnly := middleware.RequireRole("adminUser")
+	adminOrTenant := middleware.RequireRole("adminUser", "tenantUser")
 
+	// ── Admin-only: tenant management ───────────────────────────────────────
 	v1.Get("/tenants", adminOnly, adminHandler.ListTenants)
 	v1.Post("/tenants", adminOnly, adminHandler.CreateTenant)
 	v1.Get("/tenants/:id", adminOnly, adminHandler.GetTenant)
 	v1.Put("/tenants/:id", adminOnly, adminHandler.UpdateTenant)
 	v1.Delete("/tenants/:id", adminOnly, adminHandler.DeactivateTenant)
 
-	// ── Admin-only: user management ─────────────────────────────────────────
+	// ── User management ──────────────────────────────────────────────────────
+	// POST /users: adminUser has full control; tenantUser can create role=user in their tenant.
+	// All other user routes remain admin-only.
 	v1.Get("/users", adminOnly, userHandler.ListUsers)
-	v1.Post("/users", adminOnly, userHandler.CreateUserAdmin)
+	v1.Post("/users", adminOrTenant, userHandler.CreateUserAdmin)
 	v1.Get("/users/:id", adminOnly, userHandler.GetUserByID)
 	v1.Put("/users/:id", adminOnly, userHandler.UpdateUser)
 	v1.Delete("/users/:id", adminOnly, userHandler.DeleteUser)
@@ -62,7 +66,6 @@ func SetupRoutes(server *api.Server) error {
 	v1.Get("/users/:id/providers", adminOnly, userHandler.GetUserProviders)
 
 	// Admin + tenantUser: user-provider links
-	adminOrTenant := middleware.RequireRole("adminUser", "tenantUser")
 	v1.Post("/users/:id/provider", adminOrTenant, userHandler.LinkUserToProvider)
 	v1.Delete("/users/:id/provider", adminOrTenant, userHandler.RemoveUserFromProvider)
 
