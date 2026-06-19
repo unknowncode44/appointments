@@ -25,7 +25,7 @@ type AppointmentService interface {
 type ConversationService interface {
 	ListThreads(context.Context, uuid.UUID, pagination.Page) ([]dto.ConversationThreadResponse, error)
 	GetThread(context.Context, uuid.UUID, *uuid.UUID) (dto.ConversationThreadResponse, error)
-	StoreMessage(context.Context, dto.ConversationMessageRequest) (dto.ConversationMessageResponse, error)
+	StoreMessage(context.Context, dto.ConversationMessageRequest, *uuid.UUID) (dto.ConversationMessageResponse, error)
 	ProcessInboundMessage(context.Context, dto.InboundMessageRequest) (dto.ConversationMessageResponse, error)
 	ProcessEvolutionWebhook(context.Context, dto.EvolutionWebhookRequest, []byte) error
 }
@@ -241,7 +241,19 @@ func (s *conversationService) GetThread(ctx context.Context, id uuid.UUID, scope
 	return resp, nil
 }
 
-func (s *conversationService) StoreMessage(ctx context.Context, req dto.ConversationMessageRequest) (dto.ConversationMessageResponse, error) {
+func (s *conversationService) StoreMessage(ctx context.Context, req dto.ConversationMessageRequest, scope *uuid.UUID) (dto.ConversationMessageResponse, error) {
+	if scope != nil {
+		// Force the tenant to the caller's scope (ignore any body tenant_id) and
+		// verify the target customer belongs to that tenant.
+		req.TenantID = *scope
+		customer, err := s.repo.GetCustomer(ctx, req.CustomerID)
+		if err != nil {
+			return dto.ConversationMessageResponse{}, err
+		}
+		if customer.TenantID != *scope {
+			return dto.ConversationMessageResponse{}, response.ErrNotFound
+		}
+	}
 	var out db.ConversationMessage
 	err := s.repo.Store().ExecTx(ctx, func(q *db.Queries) error {
 		thread, err := q.GetConversationThreadByCustomer(ctx, db.CreateConversationThreadParams{TenantID: req.TenantID, CustomerID: req.CustomerID})

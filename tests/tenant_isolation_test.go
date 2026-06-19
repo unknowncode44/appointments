@@ -4,13 +4,14 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
 	"github.com/unknowncode44/appointments/internal/api/dto"
 	"github.com/unknowncode44/appointments/internal/api/response"
 	db "github.com/unknowncode44/appointments/internal/db/sqlc"
 	"github.com/unknowncode44/appointments/internal/services"
-	"github.com/stretchr/testify/require"
 )
 
 // errStubNotImpl is returned by stub methods that are not exercised by the tests.
@@ -108,9 +109,13 @@ func (r *stubAdminRepo) DeactivateTenantChannel(_ context.Context, _ uuid.UUID) 
 type stubWorkflowRepo struct {
 	appointment db.Appointment
 	thread      db.ConversationThread
+	customer    db.Customer
 }
 
 func (r *stubWorkflowRepo) Store() *db.Store { return nil }
+func (r *stubWorkflowRepo) GetCustomer(_ context.Context, _ uuid.UUID) (db.Customer, error) {
+	return r.customer, nil
+}
 func (r *stubWorkflowRepo) ListAppointments(_ context.Context, _ db.ListAppointmentsParams) ([]db.Appointment, int64, error) {
 	return nil, 0, errStubNotImpl
 }
@@ -128,6 +133,40 @@ func (r *stubWorkflowRepo) ListMessages(_ context.Context, _ uuid.UUID) ([]db.Co
 }
 func (r *stubWorkflowRepo) GetTenantChannelByExternalID(_ context.Context, _ string) (db.TenantChannel, error) {
 	return db.TenantChannel{}, errStubNotImpl
+}
+
+// ─── Scheduling repository stub ───────────────────────────────────────────────
+
+// stubSchedulingRepo satisfies repositories.SchedulingRepository.
+// GetProvider returns the configured provider; the list/create methods return
+// empty data so the scope checks can be exercised without a DB.
+type stubSchedulingRepo struct {
+	provider db.Provider
+}
+
+func (r *stubSchedulingRepo) GetProvider(_ context.Context, _ uuid.UUID) (db.Provider, error) {
+	return r.provider, nil
+}
+func (r *stubSchedulingRepo) CreateAvailability(_ context.Context, _ db.CreateProviderAvailabilityParams) (db.ProviderAvailability, error) {
+	return db.ProviderAvailability{}, nil
+}
+func (r *stubSchedulingRepo) ListAvailability(_ context.Context, _ uuid.UUID) ([]db.ProviderAvailability, error) {
+	return nil, nil
+}
+func (r *stubSchedulingRepo) CreateException(_ context.Context, _ db.CreateProviderExceptionParams) (db.ProviderException, error) {
+	return db.ProviderException{}, nil
+}
+func (r *stubSchedulingRepo) ListExceptions(_ context.Context, _ uuid.UUID) ([]db.ProviderException, error) {
+	return nil, nil
+}
+func (r *stubSchedulingRepo) ListExceptionsBetween(_ context.Context, _ db.ListProviderExceptionsBetweenParams) ([]db.ProviderException, error) {
+	return nil, nil
+}
+func (r *stubSchedulingRepo) CreateSlot(_ context.Context, _ db.CreateAppointmentSlotParams) (db.AppointmentSlot, error) {
+	return db.AppointmentSlot{}, nil
+}
+func (r *stubSchedulingRepo) ListAvailableSlots(_ context.Context, _ db.ListAvailableSlotsParams) ([]db.AppointmentSlot, error) {
+	return nil, nil
 }
 
 // ─── Provider isolation ───────────────────────────────────────────────────────
@@ -325,5 +364,100 @@ func TestTenantIsolation_GetConversationThread(t *testing.T) {
 		rsp, err := svc.GetThread(context.Background(), threadID, &tenantA)
 		require.NoError(t, err)
 		require.Equal(t, threadID, rsp.ID)
+	})
+}
+
+// ─── Scheduling isolation ─────────────────────────────────────────────────────
+
+func TestTenantIsolation_CreateAvailability(t *testing.T) {
+	tenantA, tenantB, providerID := uuid.New(), uuid.New(), uuid.New()
+
+	svc := services.NewSchedulingService(&stubSchedulingRepo{
+		provider: db.Provider{ID: providerID, TenantID: tenantA},
+	})
+	req := dto.AvailabilityRequest{Weekday: 1, StartTime: "09:00", EndTime: "17:00"}
+
+	t.Run("cross-tenant provider returns ErrNotFound", func(t *testing.T) {
+		_, err := svc.CreateAvailability(context.Background(), providerID, req, &tenantB)
+		require.ErrorIs(t, err, response.ErrNotFound)
+	})
+
+	t.Run("own tenant succeeds", func(t *testing.T) {
+		_, err := svc.CreateAvailability(context.Background(), providerID, req, &tenantA)
+		require.NoError(t, err)
+	})
+
+	t.Run("nil scope (admin) bypasses check", func(t *testing.T) {
+		_, err := svc.CreateAvailability(context.Background(), providerID, req, nil)
+		require.NoError(t, err)
+	})
+}
+
+func TestTenantIsolation_CreateException(t *testing.T) {
+	tenantA, tenantB, providerID := uuid.New(), uuid.New(), uuid.New()
+
+	svc := services.NewSchedulingService(&stubSchedulingRepo{
+		provider: db.Provider{ID: providerID, TenantID: tenantA},
+	})
+	req := dto.ExceptionRequest{StartAt: time.Now(), EndAt: time.Now().Add(time.Hour)}
+
+	t.Run("cross-tenant provider returns ErrNotFound", func(t *testing.T) {
+		_, err := svc.CreateException(context.Background(), providerID, req, &tenantB)
+		require.ErrorIs(t, err, response.ErrNotFound)
+	})
+
+	t.Run("own tenant succeeds", func(t *testing.T) {
+		_, err := svc.CreateException(context.Background(), providerID, req, &tenantA)
+		require.NoError(t, err)
+	})
+
+	t.Run("nil scope (admin) bypasses check", func(t *testing.T) {
+		_, err := svc.CreateException(context.Background(), providerID, req, nil)
+		require.NoError(t, err)
+	})
+}
+
+func TestTenantIsolation_GenerateSlots(t *testing.T) {
+	tenantA, tenantB, providerID := uuid.New(), uuid.New(), uuid.New()
+
+	svc := services.NewSchedulingService(&stubSchedulingRepo{
+		provider: db.Provider{ID: providerID, TenantID: tenantA},
+	})
+	req := dto.SlotGeneratorRequest{TenantID: tenantA, ProviderID: providerID, NumberOfWeeks: 1}
+
+	t.Run("cross-tenant provider returns ErrNotFound", func(t *testing.T) {
+		_, err := svc.GenerateSlots(context.Background(), req, &tenantB)
+		require.ErrorIs(t, err, response.ErrNotFound)
+	})
+
+	t.Run("own tenant succeeds", func(t *testing.T) {
+		_, err := svc.GenerateSlots(context.Background(), req, &tenantA)
+		require.NoError(t, err)
+	})
+
+	t.Run("nil scope (admin) bypasses check", func(t *testing.T) {
+		_, err := svc.GenerateSlots(context.Background(), req, nil)
+		require.NoError(t, err)
+	})
+}
+
+// ─── Conversation message isolation ───────────────────────────────────────────
+
+func TestTenantIsolation_StoreMessage(t *testing.T) {
+	tenantA, tenantB, customerID := uuid.New(), uuid.New(), uuid.New()
+
+	svc := services.NewConversationService(&stubWorkflowRepo{
+		customer: db.Customer{ID: customerID, TenantID: tenantA},
+	})
+	req := dto.ConversationMessageRequest{
+		TenantID:   tenantA,
+		CustomerID: customerID,
+		Direction:  "in",
+		Message:    "hello",
+	}
+
+	t.Run("cross-tenant customer returns ErrNotFound", func(t *testing.T) {
+		_, err := svc.StoreMessage(context.Background(), req, &tenantB)
+		require.ErrorIs(t, err, response.ErrNotFound)
 	})
 }

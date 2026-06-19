@@ -501,6 +501,8 @@ Deactivates the provider.
 
 ---
 
+> **Tenant isolation:** the availability and exception endpoints below (`POST`/`GET .../availability`, `POST`/`GET .../exceptions`) verify that the provider in the `:id` path belongs to the caller's tenant. For `tenantUser` and `user`, a provider from a different tenant returns `404` (not `403`). `adminUser` bypasses the check.
+
 ### POST `/api/v1/providers/:id/availability`
 
 Adds a weekly availability slot for the provider.
@@ -813,6 +815,8 @@ Pre-generates appointment slots for a provider based on their weekly availabilit
 > `slot_minutes`: optional, defaults to the service duration.  
 > `timezone`: optional, defaults to UTC.
 
+> **Tenant isolation:** for `tenantUser` and `user`, `tenant_id` is forced from the JWT (any value in the body is ignored), and the target `provider_id` must belong to that tenant — otherwise `404` is returned. `adminUser` bypasses the check.
+
 **Response `201`**
 
 ```json
@@ -1019,6 +1023,8 @@ Stores a message in a conversation thread (creates the thread if needed).
   "metadata":    {}
 }
 ```
+
+> **Tenant isolation:** for `tenantUser`, `tenant_id` is forced from the JWT (any value in the body is ignored), and the supplied `customer_id` must belong to that tenant — otherwise `404` is returned. `adminUser` bypasses the check.
 
 **Response `201`** — message object.
 

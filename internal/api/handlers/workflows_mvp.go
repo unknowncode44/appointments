@@ -137,11 +137,15 @@ func (h *ConversationMVPHandler) Get(c *fiber.Ctx) error {
 }
 
 func (h *ConversationMVPHandler) Message(c *fiber.Ctx) error {
+	scope, err := callerTenantScope(c)
+	if err != nil {
+		return response.Error(c, err)
+	}
 	var req dto.ConversationMessageRequest
 	if err := bindAndValidate(c, &req); err != nil {
 		return response.BadRequest(c, err)
 	}
-	rsp, err := h.service.StoreMessage(c.Context(), req)
+	rsp, err := h.service.StoreMessage(c.Context(), req, scope)
 	if err != nil {
 		return response.Error(c, err)
 	}
