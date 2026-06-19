@@ -1,6 +1,8 @@
 package db
 
 import (
+	"context"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -16,4 +18,9 @@ func NewStore(db *pgxpool.Pool) *Store {
 		db:      db,
 		Queries: New(db),
 	}
+}
+
+// Ping verifies the database connection is alive.
+func (s *Store) Ping(ctx context.Context) error {
+	return s.db.Ping(ctx)
 }

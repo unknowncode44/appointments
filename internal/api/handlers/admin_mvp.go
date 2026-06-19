@@ -3,10 +3,10 @@ package handlers
 import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
-	"github.com/mousav1/ticket/internal/api/dto"
-	"github.com/mousav1/ticket/internal/api/response"
-	"github.com/mousav1/ticket/internal/platform/pagination"
-	"github.com/mousav1/ticket/internal/services"
+	"github.com/unknowncode44/appointments/internal/api/dto"
+	"github.com/unknowncode44/appointments/internal/api/response"
+	"github.com/unknowncode44/appointments/internal/platform/pagination"
+	"github.com/unknowncode44/appointments/internal/services"
 )
 
 type AdminMVPHandler struct{ service services.AdminService }
@@ -92,7 +92,11 @@ func (h *AdminMVPHandler) GetProvider(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
-	rsp, err := h.service.GetProvider(c.Context(), id)
+	scope, err := callerTenantScope(c)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	rsp, err := h.service.GetProvider(c.Context(), id, scope)
 	if err != nil {
 		return response.Error(c, err)
 	}
@@ -100,9 +104,16 @@ func (h *AdminMVPHandler) GetProvider(c *fiber.Ctx) error {
 }
 
 func (h *AdminMVPHandler) CreateProvider(c *fiber.Ctx) error {
+	scope, err := callerTenantScope(c)
+	if err != nil {
+		return response.Error(c, err)
+	}
 	var req dto.ProviderRequest
 	if err := bindAndValidate(c, &req); err != nil {
 		return response.BadRequest(c, err)
+	}
+	if scope != nil {
+		req.TenantID = *scope
 	}
 	rsp, err := h.service.CreateProvider(c.Context(), req)
 	if err != nil {
@@ -116,11 +127,15 @@ func (h *AdminMVPHandler) UpdateProvider(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
+	scope, err := callerTenantScope(c)
+	if err != nil {
+		return response.Error(c, err)
+	}
 	var req dto.ProviderUpdateRequest
 	if err := bindAndValidate(c, &req); err != nil {
 		return response.BadRequest(c, err)
 	}
-	rsp, err := h.service.UpdateProvider(c.Context(), id, req)
+	rsp, err := h.service.UpdateProvider(c.Context(), id, req, scope)
 	if err != nil {
 		return response.Error(c, err)
 	}
@@ -132,7 +147,11 @@ func (h *AdminMVPHandler) DeactivateProvider(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
-	rsp, err := h.service.DeactivateProvider(c.Context(), id)
+	scope, err := callerTenantScope(c)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	rsp, err := h.service.DeactivateProvider(c.Context(), id, scope)
 	if err != nil {
 		return response.Error(c, err)
 	}
@@ -160,7 +179,11 @@ func (h *AdminMVPHandler) GetService(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
-	rsp, err := h.service.GetService(c.Context(), id)
+	scope, err := callerTenantScope(c)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	rsp, err := h.service.GetService(c.Context(), id, scope)
 	if err != nil {
 		return response.Error(c, err)
 	}
@@ -168,9 +191,16 @@ func (h *AdminMVPHandler) GetService(c *fiber.Ctx) error {
 }
 
 func (h *AdminMVPHandler) CreateService(c *fiber.Ctx) error {
+	scope, err := callerTenantScope(c)
+	if err != nil {
+		return response.Error(c, err)
+	}
 	var req dto.ServiceRequest
 	if err := bindAndValidate(c, &req); err != nil {
 		return response.BadRequest(c, err)
+	}
+	if scope != nil {
+		req.TenantID = *scope
 	}
 	rsp, err := h.service.CreateService(c.Context(), req)
 	if err != nil {
@@ -184,11 +214,15 @@ func (h *AdminMVPHandler) UpdateService(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
+	scope, err := callerTenantScope(c)
+	if err != nil {
+		return response.Error(c, err)
+	}
 	var req dto.ServiceUpdateRequest
 	if err := bindAndValidate(c, &req); err != nil {
 		return response.BadRequest(c, err)
 	}
-	rsp, err := h.service.UpdateService(c.Context(), id, req)
+	rsp, err := h.service.UpdateService(c.Context(), id, req, scope)
 	if err != nil {
 		return response.Error(c, err)
 	}
@@ -200,7 +234,11 @@ func (h *AdminMVPHandler) DeactivateService(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
-	rsp, err := h.service.DeactivateService(c.Context(), id)
+	scope, err := callerTenantScope(c)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	rsp, err := h.service.DeactivateService(c.Context(), id, scope)
 	if err != nil {
 		return response.Error(c, err)
 	}
@@ -224,7 +262,11 @@ func (h *AdminMVPHandler) GetCustomer(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
-	rsp, err := h.service.GetCustomer(c.Context(), id)
+	scope, err := callerTenantScope(c)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	rsp, err := h.service.GetCustomer(c.Context(), id, scope)
 	if err != nil {
 		return response.Error(c, err)
 	}
@@ -232,9 +274,16 @@ func (h *AdminMVPHandler) GetCustomer(c *fiber.Ctx) error {
 }
 
 func (h *AdminMVPHandler) CreateCustomer(c *fiber.Ctx) error {
+	scope, err := callerTenantScope(c)
+	if err != nil {
+		return response.Error(c, err)
+	}
 	var req dto.CustomerRequest
 	if err := bindAndValidate(c, &req); err != nil {
 		return response.BadRequest(c, err)
+	}
+	if scope != nil {
+		req.TenantID = *scope
 	}
 	rsp, err := h.service.CreateCustomer(c.Context(), req)
 	if err != nil {
@@ -248,11 +297,15 @@ func (h *AdminMVPHandler) UpdateCustomer(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
+	scope, err := callerTenantScope(c)
+	if err != nil {
+		return response.Error(c, err)
+	}
 	var req dto.CustomerUpdateRequest
 	if err := bindAndValidate(c, &req); err != nil {
 		return response.BadRequest(c, err)
 	}
-	rsp, err := h.service.UpdateCustomer(c.Context(), id, req)
+	rsp, err := h.service.UpdateCustomer(c.Context(), id, req, scope)
 	if err != nil {
 		return response.Error(c, err)
 	}
@@ -280,7 +333,11 @@ func (h *AdminMVPHandler) GetTenantChannel(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
-	rsp, err := h.service.GetTenantChannel(c.Context(), id)
+	scope, err := callerTenantScope(c)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	rsp, err := h.service.GetTenantChannel(c.Context(), id, scope)
 	if err != nil {
 		return response.Error(c, err)
 	}
@@ -288,9 +345,16 @@ func (h *AdminMVPHandler) GetTenantChannel(c *fiber.Ctx) error {
 }
 
 func (h *AdminMVPHandler) CreateTenantChannel(c *fiber.Ctx) error {
+	scope, err := callerTenantScope(c)
+	if err != nil {
+		return response.Error(c, err)
+	}
 	var req dto.TenantChannelRequest
 	if err := bindAndValidate(c, &req); err != nil {
 		return response.BadRequest(c, err)
+	}
+	if scope != nil {
+		req.TenantID = *scope
 	}
 	rsp, err := h.service.CreateTenantChannel(c.Context(), req)
 	if err != nil {
@@ -304,11 +368,15 @@ func (h *AdminMVPHandler) UpdateTenantChannel(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
+	scope, err := callerTenantScope(c)
+	if err != nil {
+		return response.Error(c, err)
+	}
 	var req dto.TenantChannelUpdateRequest
 	if err := bindAndValidate(c, &req); err != nil {
 		return response.BadRequest(c, err)
 	}
-	rsp, err := h.service.UpdateTenantChannel(c.Context(), id, req)
+	rsp, err := h.service.UpdateTenantChannel(c.Context(), id, req, scope)
 	if err != nil {
 		return response.Error(c, err)
 	}
@@ -320,7 +388,11 @@ func (h *AdminMVPHandler) DeactivateTenantChannel(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
-	rsp, err := h.service.DeactivateTenantChannel(c.Context(), id)
+	scope, err := callerTenantScope(c)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	rsp, err := h.service.DeactivateTenantChannel(c.Context(), id, scope)
 	if err != nil {
 		return response.Error(c, err)
 	}

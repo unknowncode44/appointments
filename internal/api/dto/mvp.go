@@ -171,7 +171,7 @@ type AppointmentCreateRequest struct {
 }
 
 type AppointmentUpdateRequest struct {
-	Status    *string    `json:"status"`
+	Status    *string    `json:"status" validate:"omitempty,oneof=confirmed cancelled completed no_show"`
 	SlotID    *uuid.UUID `json:"slot_id"`
 	ServiceID *uuid.UUID `json:"service_id"`
 	Notes     *string    `json:"notes"`
