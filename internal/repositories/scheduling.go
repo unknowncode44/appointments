@@ -8,6 +8,7 @@ import (
 )
 
 type SchedulingRepository interface {
+	GetProvider(context.Context, uuid.UUID) (db.Provider, error)
 	CreateAvailability(context.Context, db.CreateProviderAvailabilityParams) (db.ProviderAvailability, error)
 	ListAvailability(context.Context, uuid.UUID) ([]db.ProviderAvailability, error)
 	CreateException(context.Context, db.CreateProviderExceptionParams) (db.ProviderException, error)
@@ -23,6 +24,9 @@ func NewSchedulingRepository(store *db.Store) SchedulingRepository {
 	return &schedulingRepository{store: store}
 }
 
+func (r *schedulingRepository) GetProvider(ctx context.Context, id uuid.UUID) (db.Provider, error) {
+	return r.store.GetProvider(ctx, id)
+}
 func (r *schedulingRepository) CreateAvailability(ctx context.Context, arg db.CreateProviderAvailabilityParams) (db.ProviderAvailability, error) {
 	return r.store.CreateProviderAvailability(ctx, arg)
 }

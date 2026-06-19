@@ -19,6 +19,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **F0-2 — `RequireTenant` middleware now applies to the `user` role.**  
   Previously the `user` role bypassed tenant enforcement on list endpoints (only `tenantUser` was checked). The middleware now enforces tenant scope for all non-admin roles. `adminUser` continues to bypass the check.
 
+- **F0.5-1 — Tenant-scope the scheduling endpoints.**  
+  `POST /providers/:id/availability`, `POST /providers/:id/exceptions`, `POST /slot-generator`, and the related `GET .../availability` / `GET .../exceptions` listings now verify that the target provider belongs to the caller's tenant before reading or writing. Cross-tenant access returns `404 Not Found`. `POST /slot-generator` additionally forces `tenant_id` from the JWT, ignoring any `tenant_id` in the body. `adminUser` bypasses all checks.
+
+- **F0.5-2 — Tenant-scope `POST /conversations/message`.**  
+  The endpoint now forces `tenant_id` from the JWT and verifies that the supplied `customer_id` belongs to the caller's tenant; a cross-tenant customer returns `404 Not Found`. `adminUser` bypasses the check.
+
 - **F0-5 — CORS no longer allows all origins (`*`).**  
   The `Access-Control-Allow-Origin` header is now controlled by the `ALLOWED_ORIGINS` configuration variable. Only listed origins are permitted. `AllowHeaders` is also narrowed to `Origin, Content-Type, Accept, Authorization`.
 

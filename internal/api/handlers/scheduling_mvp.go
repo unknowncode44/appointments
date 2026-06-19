@@ -20,11 +20,15 @@ func (h *SchedulingMVPHandler) CreateAvailability(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
+	scope, err := callerTenantScope(c)
+	if err != nil {
+		return response.Error(c, err)
+	}
 	var req dto.AvailabilityRequest
 	if err := bindAndValidate(c, &req); err != nil {
 		return response.BadRequest(c, err)
 	}
-	rsp, err := h.service.CreateAvailability(c.Context(), providerID, req)
+	rsp, err := h.service.CreateAvailability(c.Context(), providerID, req, scope)
 	if err != nil {
 		return response.Error(c, err)
 	}
@@ -36,7 +40,11 @@ func (h *SchedulingMVPHandler) ListAvailability(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
-	rsp, err := h.service.ListAvailability(c.Context(), providerID)
+	scope, err := callerTenantScope(c)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	rsp, err := h.service.ListAvailability(c.Context(), providerID, scope)
 	if err != nil {
 		return response.Error(c, err)
 	}
@@ -48,11 +56,15 @@ func (h *SchedulingMVPHandler) CreateException(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
+	scope, err := callerTenantScope(c)
+	if err != nil {
+		return response.Error(c, err)
+	}
 	var req dto.ExceptionRequest
 	if err := bindAndValidate(c, &req); err != nil {
 		return response.BadRequest(c, err)
 	}
-	rsp, err := h.service.CreateException(c.Context(), providerID, req)
+	rsp, err := h.service.CreateException(c.Context(), providerID, req, scope)
 	if err != nil {
 		return response.Error(c, err)
 	}
@@ -64,7 +76,11 @@ func (h *SchedulingMVPHandler) ListExceptions(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
-	rsp, err := h.service.ListExceptions(c.Context(), providerID)
+	scope, err := callerTenantScope(c)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	rsp, err := h.service.ListExceptions(c.Context(), providerID, scope)
 	if err != nil {
 		return response.Error(c, err)
 	}
@@ -72,11 +88,15 @@ func (h *SchedulingMVPHandler) ListExceptions(c *fiber.Ctx) error {
 }
 
 func (h *SchedulingMVPHandler) GenerateSlots(c *fiber.Ctx) error {
+	scope, err := callerTenantScope(c)
+	if err != nil {
+		return response.Error(c, err)
+	}
 	var req dto.SlotGeneratorRequest
 	if err := bindAndValidate(c, &req); err != nil {
 		return response.BadRequest(c, err)
 	}
-	rsp, err := h.service.GenerateSlots(c.Context(), req)
+	rsp, err := h.service.GenerateSlots(c.Context(), req, scope)
 	if err != nil {
 		return response.Error(c, err)
 	}
