@@ -1,14 +1,26 @@
 package routes
 
 import (
-	"github.com/mousav1/ticket/internal/api"
-	"github.com/mousav1/ticket/internal/api/handlers"
-	"github.com/mousav1/ticket/internal/api/middleware"
-	"github.com/mousav1/ticket/internal/repositories"
-	"github.com/mousav1/ticket/internal/services"
+	"github.com/gofiber/fiber/v2"
+	"github.com/unknowncode44/appointments/internal/api"
+	"github.com/unknowncode44/appointments/internal/api/handlers"
+	"github.com/unknowncode44/appointments/internal/api/middleware"
+	"github.com/unknowncode44/appointments/internal/repositories"
+	"github.com/unknowncode44/appointments/internal/services"
 )
 
 func SetupRoutes(server *api.Server) error {
+
+	// ── Health endpoints (no auth) ──────────────────────────────────────────
+	server.App.Get("/healthz", func(c *fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+	server.App.Get("/readyz", func(c *fiber.Ctx) error {
+		if err := server.Store.Ping(c.Context()); err != nil {
+			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{"error": "db unavailable"})
+		}
+		return c.SendStatus(fiber.StatusOK)
+	})
 
 	// ── Public auth endpoints ───────────────────────────────────────────────
 	userHandler := handlers.NewUserHandler(server.Store, server.TokenMaker, server.Config)

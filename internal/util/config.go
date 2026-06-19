@@ -24,6 +24,7 @@ type Config struct {
 	MigrationURL         string        `mapstructure:"MIGRATION_URL"`
 	EvoAPIURL            string        `mapstructure:"EVO_API_URL"`
 	EvoAPIKey            string        `mapstructure:"EVO_API_KEY"`
+	AllowedOrigins       string        `mapstructure:"ALLOWED_ORIGINS"`
 }
 
 // LoadConfig reads configuration from file or environment variables.

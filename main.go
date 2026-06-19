@@ -10,10 +10,10 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/lib/pq"
-	"github.com/mousav1/ticket/internal/api"
-	db "github.com/mousav1/ticket/internal/db/sqlc"
-	"github.com/mousav1/ticket/internal/routes"
-	"github.com/mousav1/ticket/internal/util"
+	"github.com/unknowncode44/appointments/internal/api"
+	db "github.com/unknowncode44/appointments/internal/db/sqlc"
+	"github.com/unknowncode44/appointments/internal/routes"
+	"github.com/unknowncode44/appointments/internal/util"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
@@ -64,6 +64,10 @@ func main() {
 }
 
 func runDBMigration(migrationURL string, dbSource string) {
+	// WARNING (F0-6): migrations run synchronously at startup.
+	// Safe only with a single replica. If you add a second replica, replace
+	// this with a dedicated migration job or a Postgres advisory lock to
+	// prevent concurrent schema changes.
 	migration, err := migrate.New(migrationURL, dbSource)
 	if err != nil {
 		log.Fatal().Err(err).Msg("cannot create new migrate instance")

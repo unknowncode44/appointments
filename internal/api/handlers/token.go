@@ -5,9 +5,9 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
-	db "github.com/mousav1/ticket/internal/db/sqlc"
-	"github.com/mousav1/ticket/internal/token"
-	"github.com/mousav1/ticket/internal/util"
+	db "github.com/unknowncode44/appointments/internal/db/sqlc"
+	"github.com/unknowncode44/appointments/internal/token"
+	"github.com/unknowncode44/appointments/internal/util"
 )
 
 type TokenHandler struct {
@@ -69,7 +69,7 @@ func (h *TokenHandler) RenewAccessToken(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	accessToken, accessPayload, err := h.tokenMaker.CreateToken(refreshPayload.Username, refreshPayload.Role, refreshPayload.TenantID, h.Config.AccessTokenDuration)
+	accessToken, accessPayload, err := h.tokenMaker.CreateToken(refreshPayload.Username, refreshPayload.Role, refreshPayload.UserID, refreshPayload.TenantID, h.Config.AccessTokenDuration)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "could not create token"})
 	}

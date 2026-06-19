@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
-	db "github.com/mousav1/ticket/internal/db/sqlc"
+	db "github.com/unknowncode44/appointments/internal/db/sqlc"
 )
 
 type SchedulingRepository interface {

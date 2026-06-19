@@ -1,0 +1,194 @@
+# CLAUDE.md
+
+Guidance for Claude Code and other coding agents working in this repository.
+
+## Project Overview
+
+This is a Go backend for a multi-tenant appointment scheduling MVP. It serves a Fiber HTTP API for tenants, providers, services, customers, appointment slots, bookings, conversations, and an Evolution/WhatsApp webhook foundation.
+
+The module path is `github.com/unknowncode44/appointments`.
+
+## Stack
+
+- Go 1.23+
+- Fiber v2
+- PostgreSQL
+- pgx/v5 connection pool
+- sqlc-generated query layer
+- golang-migrate migrations
+- Viper config loaded from `app.env`
+- JWT auth
+- Docker Compose for local app/Postgres/Redis
+
+## Important Commands
+
+Run the API locally:
+
+```bash
+go run main.go
+```
+
+Run tests:
+
+```bash
+go test ./...
+```
+
+If the Go build cache is not writable:
+
+```bash
+GOCACHE=/tmp/go-build-cache go test ./...
+```
+
+Run with Docker Compose:
+
+```bash
+docker-compose up --build
+```
+
+Generate sqlc code after editing SQL queries or migrations:
+
+```bash
+sqlc generate
+```
+
+Format Go code before finishing changes:
+
+```bash
+gofmt -w <changed-go-files>
+```
+
+## Configuration
+
+Runtime config is loaded by `internal/util/config.go` from `app.env` using Viper. Required variables include:
+
+- `APP_PORT`
+- `APP_NAME`
+- `APP_DEBUG`
+- `DB_CONNECTION`
+- `DB_HOST`
+- `DB_PORT`
+- `DB_DATABASE`
+- `DB_USERNAME`
+- `DB_PASSWORD`
+- `TOKEN_SECRET_KEY`
+- `ACCESS_TOKEN_DURATION`
+- `REFRESH_TOKEN_DURATION`
+- `MIGRATION_URL`
+
+Do not commit real secrets. Treat `app.env` as local runtime configuration.
+
+## Runtime Flow
+
+`main.go` performs startup in this order:
+
+1. Load config from `app.env`.
+2. Build the PostgreSQL DSN.
+3. Open a `pgxpool.Pool`.
+4. Run migrations with `golang-migrate`.
+5. Create `db.Store`.
+6. Create the Fiber server and JWT token maker.
+7. Register routes from `internal/routes/web.go`.
+8. Listen on `APP_PORT`.
+
+Migrations run automatically on server startup via `runDBMigration`.
+
+## Project Layout
+
+- `main.go`: application entrypoint and database migration startup.
+- `internal/api/server.go`: Fiber app setup, CORS, auth rate limits, server struct.
+- `internal/routes/web.go`: route registration and inline RBAC middleware.
+- `internal/api/handlers`: HTTP handlers.
+- `internal/api/dto`: request/response DTOs.
+- `internal/api/middleware`: JWT auth, role checks, tenant checks.
+- `internal/api/response`: shared HTTP error mapping.
+- `internal/api/validators`: request validation wrapper.
+- `internal/services`: business logic.
+- `internal/repositories`: persistence interfaces/adapters over `db.Store`.
+- `internal/db/query`: sqlc SQL query definitions.
+- `internal/db/migration`: PostgreSQL migrations.
+- `internal/db/sqlc`: generated sqlc code plus store/transaction helpers.
+- `internal/token`: JWT maker and payload.
+- `internal/util`: config, password, and random helpers.
+- `tests`: focused package-level tests.
+
+## Architecture Rules
+
+- Keep HTTP-specific logic in handlers and middleware.
+- Keep business rules in services.
+- Keep database access behind repositories and `db.Store`.
+- Prefer existing DTOs and mapper helpers instead of returning sqlc rows directly from handlers.
+- Prefer sqlc queries over handwritten SQL in application code.
+- When changing SQL:
+  - update files in `internal/db/query` and/or `internal/db/migration`;
+  - run `sqlc generate`;
+  - review generated files in `internal/db/sqlc`.
+- The module path is `github.com/unknowncode44/appointments`. Do not rename it.
+
+## Auth, RBAC, and Tenant Isolation
+
+Public endpoints:
+
+- `POST /register`
+- `POST /login`
+- `POST /tokens/renew_access`
+- `POST /api/v1/webhooks/evolution`
+
+Protected endpoints require:
+
+```http
+Authorization: Bearer <access_token>
+```
+
+Roles are enforced inline in `internal/routes/web.go` with `middleware.RequireRole(...)`.
+
+Current roles:
+
+- `adminUser`: full access.
+- `tenantUser`: tenant-scoped management access.
+- `user`: scheduling and customer/appointment access.
+
+Tenant isolation is enforced with `middleware.RequireTenant("tenant_id")` on list/query routes that accept `tenant_id`. When adding list endpoints that filter by tenant, include tenant enforcement unless the endpoint is deliberately admin-only.
+
+Do not reintroduce a static route-permission table unless specifically requested.
+
+## API Conventions
+
+- API routes are under `/api/v1` after auth, except own-user routes under `/user/...`.
+- Use UUIDs for domain IDs and user IDs.
+- Use Fiber handlers and responses consistently with the existing handlers.
+- Public auth endpoints are rate-limited in `internal/api/server.go`.
+- The Evolution webhook is public because it is intended to be called externally without JWT.
+
+## Database Notes
+
+- SQLC config is in `sqlc.yaml`.
+- SQLC uses PostgreSQL and `pgx/v5`.
+- UUID columns map to `github.com/google/uuid.UUID`.
+- `timestamptz` maps to `time.Time`.
+- The database package generated by sqlc is named `db`.
+- `internal/db/sqlc/store.go` and `exec_tx.go` hold the store and transaction helper pattern.
+
+## Testing Guidance
+
+Before finishing meaningful code changes, run:
+
+```bash
+go test ./...
+```
+
+For handler or middleware changes, prefer focused tests using `httptest` and Fiber's `App.Test`, as seen in `tests/authMiddleware_test.go`.
+
+For token changes, inspect and extend `tests/jwt_maker_test.go`.
+
+If tests cannot run because Postgres or external services are unavailable, state that clearly and run the most relevant package-level tests that do not require those services.
+
+## Code Style
+
+- Use `gofmt`.
+- Keep comments short and useful.
+- Match the existing handler/service/repository layering.
+- Avoid broad refactors while implementing narrow changes.
+- Do not edit generated sqlc files by hand unless the change is intentionally outside sqlc generation.
+- Do not touch local config or secrets unless the task explicitly requires it.
+

@@ -8,11 +8,11 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/mousav1/ticket/internal/api"
-	"github.com/mousav1/ticket/internal/api/middleware"
-	db "github.com/mousav1/ticket/internal/db/sqlc"
-	"github.com/mousav1/ticket/internal/token"
-	"github.com/mousav1/ticket/internal/util"
+	"github.com/unknowncode44/appointments/internal/api"
+	"github.com/unknowncode44/appointments/internal/api/middleware"
+	db "github.com/unknowncode44/appointments/internal/db/sqlc"
+	"github.com/unknowncode44/appointments/internal/token"
+	"github.com/unknowncode44/appointments/internal/util"
 	"github.com/stretchr/testify/require"
 )
 
@@ -24,7 +24,7 @@ func addAuthorization(
 	username string,
 	duration time.Duration,
 ) {
-	token, payload, err := tokenMaker.CreateToken(username, "user", nil, duration)
+	token, payload, err := tokenMaker.CreateToken(username, "user", 0, nil, duration)
 	require.NoError(t, err)
 	require.NotEmpty(t, payload)
 

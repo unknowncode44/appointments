@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 
 	"github.com/google/uuid"
-	"github.com/mousav1/ticket/internal/api/dto"
-	db "github.com/mousav1/ticket/internal/db/sqlc"
-	"github.com/mousav1/ticket/internal/repositories"
+	"github.com/unknowncode44/appointments/internal/api/dto"
+	db "github.com/unknowncode44/appointments/internal/db/sqlc"
+	"github.com/unknowncode44/appointments/internal/repositories"
 )
 
 func mapTenant(v db.Tenant) dto.TenantResponse {
