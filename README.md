@@ -33,6 +33,7 @@ TOKEN_SECRET_KEY=<32-byte-secret>
 ACCESS_TOKEN_DURATION=15m
 REFRESH_TOKEN_DURATION=24h
 MIGRATION_URL=file://internal/db/migration
+ALLOWED_ORIGINS=http://localhost:3000
 ```
 
 Run locally:
@@ -126,13 +127,15 @@ Multi-tenant isolation is enforced by `middleware.RequireTenant()` on every list
 ### **Tenant User (`tenantUser`)**
 - Can manage providers, services, customers within **their own tenant only**
 - Can manage user-provider associations within their tenant
-- Scoped to their assigned tenant — cross-tenant access returns `403 Forbidden`
+- Cross-tenant access to a resource returns `404` (not `403`) to prevent existence leakage
+- On write operations, `tenant_id` in the request body is ignored — the JWT value is always used
 
 ### **Regular User (`user`)**
+- Scoped to their own tenant, same as `tenantUser`
 - Can manage customers and appointments
 - Can view provider availability and exceptions
 - Can generate and query appointment slots
-- Limited to appointment booking and scheduling
+- Cross-tenant access returns `404`
 
 ### User Management Routes (Admin Only)
 
@@ -277,6 +280,13 @@ POST /api/v1/inbound-messages
 POST /api/v1/webhooks/evolution   (public — no JWT required)
 ```
 
+Health routes (no auth, no rate limit):
+
+```text
+GET /healthz   liveness probe — always 200 if the process is up
+GET /readyz    readiness probe — 200 if DB reachable, 503 otherwise
+```
+
 `POST /api/v1/webhooks/evolution` is public so Evolution can call it without a JWT. It resolves tenants through `tenant_channels.external_id`. The handler supports both Evolution API v1 (flat JSON) and **v2 nested payload** (`data.key.remoteJid`, `data.message.conversation`).
 
 ## Pagination and Filters
@@ -402,7 +412,9 @@ For the slot generator, include `"timezone": "America/Argentina/Buenos_Aires"` i
 
 For webhook testing, `tenant_channel_external_id` must match an active row in `tenant_channels.external_id`. The webhook endpoint accepts both the legacy flat payload and the Evolution v2 nested format.
 
-## Breaking Changes in `fixes` branch
+## Breaking Changes
+
+### `fixes` branch
 
 | Area | Change |
 |---|---|
@@ -411,3 +423,14 @@ For webhook testing, `tenant_channel_external_id` must match an active row in `t
 | `POST /api/v1/slot-generator` | New optional field `timezone` (IANA string) |
 | `GET /api/v1/users` | Pagination params changed from `limit`/`offset` to `page`/`page_size` |
 | `POST /api/v1/webhooks/evolution` | Now parses Evolution v2 nested payload |
+
+### `fix/fase0-security-hardening` branch
+
+| Area | Change |
+|---|---|
+| JWT payload `user_id` | New field `user_id` (int32) carries the real user DB ID. Clients that previously used `decoded.id` as user ID must switch to `decoded.user_id`. `decoded.id` remains the session UUID. |
+| Appointment `status` on creation | Changed from `reserved` to `confirmed`. Valid values enforced by DB constraint: `confirmed`, `cancelled`, `completed`, `no_show`. |
+| Cross-tenant resource access | Now returns `404` instead of `403`. This applies to all `GET /:id`, `PUT /:id`, `DELETE /:id` routes for providers, services, customers, tenant channels, appointments, and conversations. |
+| `user` role tenant enforcement | Previously the `user` role bypassed tenant scope on list endpoints. Now enforced identically to `tenantUser`. |
+| Go module path | Renamed from `github.com/mousav1/ticket` to `github.com/unknowncode44/appointments`. |
+| `ALLOWED_ORIGINS` config | New required env variable. CORS no longer allows `*`; only origins listed here are permitted. |
