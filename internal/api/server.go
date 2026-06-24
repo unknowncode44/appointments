@@ -7,9 +7,9 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/limiter"
-	db "github.com/mousav1/ticket/internal/db/sqlc"
-	"github.com/mousav1/ticket/internal/token"
-	"github.com/mousav1/ticket/internal/util"
+	db "github.com/unknowncode44/appointments/internal/db/sqlc"
+	"github.com/unknowncode44/appointments/internal/token"
+	"github.com/unknowncode44/appointments/internal/util"
 )
 
 // Server serves HTTP requests for the appointments service.
@@ -29,14 +29,29 @@ func NewServer(config util.Config, store *db.Store) (*Server, error) {
 
 	app := fiber.New()
 
+	allowedOrigins := config.AllowedOrigins
+	if allowedOrigins == "" {
+		allowedOrigins = "http://localhost:3000"
+	}
 	app.Use(cors.New(cors.Config{
-		AllowOrigins: "*",
+		AllowOrigins: allowedOrigins,
 		AllowMethods: "GET,POST,HEAD,PUT,DELETE,PATCH,OPTIONS",
-		AllowHeaders: "*",
+		AllowHeaders: "Origin,Content-Type,Accept,Authorization",
 	}))
 
-	// Rate-limit public auth endpoints to 10 requests per minute per IP.
-	// This mitigates brute-force on /login and account-enumeration on /register.
+	// Global rate limiter: 200 requests per minute per IP across all routes.
+	app.Use(limiter.New(limiter.Config{
+		Max:        200,
+		Expiration: 1 * time.Minute,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			return c.IP()
+		},
+		LimitReached: func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{"error": "too many requests, please try again later"})
+		},
+	}))
+
+	// Tighter rate-limit on public auth endpoints to mitigate brute-force.
 	authLimiter := limiter.New(limiter.Config{
 		Max:        10,
 		Expiration: 1 * time.Minute,

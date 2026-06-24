@@ -16,17 +16,18 @@ var (
 
 // Payload contains the payload data of the token
 type Payload struct {
-	ID        uuid.UUID `json:"id"`
-	Username  string    `json:"username"`
-	Role      string    `json:"role"`
+	ID        uuid.UUID  `json:"id"`
+	UserID    int32      `json:"user_id"`
+	Username  string     `json:"username"`
+	Role      string     `json:"role"`
 	TenantID  *uuid.UUID `json:"tenant_id,omitempty"`
-	IssuedAt  time.Time `json:"issued_at"`
-	ExpiredAt time.Time `json:"expired_at"`
+	IssuedAt  time.Time  `json:"issued_at"`
+	ExpiredAt time.Time  `json:"expired_at"`
 	jwt.RegisteredClaims
 }
 
 // NewPayload creates a new token payload with a specific username and duration
-func NewPayload(username, role string, tenantID *uuid.UUID, duration time.Duration) (*Payload, error) {
+func NewPayload(username, role string, userID int32, tenantID *uuid.UUID, duration time.Duration) (*Payload, error) {
 	tokenID, err := uuid.NewRandom()
 	if err != nil {
 		return nil, err
@@ -35,6 +36,7 @@ func NewPayload(username, role string, tenantID *uuid.UUID, duration time.Durati
 	now := time.Now()
 	payload := &Payload{
 		ID:        tokenID,
+		UserID:    userID,
 		Username:  username,
 		Role:      role,
 		TenantID:  tenantID,

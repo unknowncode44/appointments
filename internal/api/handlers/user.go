@@ -8,13 +8,13 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
-	"github.com/mousav1/ticket/internal/api/dto"
-	"github.com/mousav1/ticket/internal/api/middleware"
-	"github.com/mousav1/ticket/internal/api/response"
-	db "github.com/mousav1/ticket/internal/db/sqlc"
-	"github.com/mousav1/ticket/internal/platform/pagination"
-	"github.com/mousav1/ticket/internal/token"
-	"github.com/mousav1/ticket/internal/util"
+	"github.com/unknowncode44/appointments/internal/api/dto"
+	"github.com/unknowncode44/appointments/internal/api/middleware"
+	"github.com/unknowncode44/appointments/internal/api/response"
+	db "github.com/unknowncode44/appointments/internal/db/sqlc"
+	"github.com/unknowncode44/appointments/internal/platform/pagination"
+	"github.com/unknowncode44/appointments/internal/token"
+	"github.com/unknowncode44/appointments/internal/util"
 )
 
 type UserHandler struct {
@@ -116,11 +116,11 @@ func (h *UserHandler) LoginUser(c *fiber.Ctx) error {
 	if err = util.CheckPassword(req.Password, user.HashedPassword); err != nil {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid credentials"})
 	}
-	accessToken, accessPayload, err := h.tokenMaker.CreateToken(user.Username, string(user.Role), user.TenantID, h.Config.AccessTokenDuration)
+	accessToken, accessPayload, err := h.tokenMaker.CreateToken(user.Username, string(user.Role), user.ID, user.TenantID, h.Config.AccessTokenDuration)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "could not create token"})
 	}
-	refreshToken, refreshPayload, err := h.tokenMaker.CreateToken(user.Username, string(user.Role), user.TenantID, h.Config.RefreshTokenDuration)
+	refreshToken, refreshPayload, err := h.tokenMaker.CreateToken(user.Username, string(user.Role), user.ID, user.TenantID, h.Config.RefreshTokenDuration)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "could not create refresh token"})
 	}

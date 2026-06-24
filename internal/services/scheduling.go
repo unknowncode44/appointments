@@ -6,19 +6,19 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/mousav1/ticket/internal/api/dto"
-	"github.com/mousav1/ticket/internal/api/response"
-	db "github.com/mousav1/ticket/internal/db/sqlc"
-	"github.com/mousav1/ticket/internal/platform/pagination"
-	"github.com/mousav1/ticket/internal/repositories"
+	"github.com/unknowncode44/appointments/internal/api/dto"
+	"github.com/unknowncode44/appointments/internal/api/response"
+	db "github.com/unknowncode44/appointments/internal/db/sqlc"
+	"github.com/unknowncode44/appointments/internal/platform/pagination"
+	"github.com/unknowncode44/appointments/internal/repositories"
 )
 
 type SchedulingService interface {
-	CreateAvailability(context.Context, uuid.UUID, dto.AvailabilityRequest) (dto.AvailabilityResponse, error)
-	ListAvailability(context.Context, uuid.UUID) ([]dto.AvailabilityResponse, error)
-	CreateException(context.Context, uuid.UUID, dto.ExceptionRequest) (dto.ExceptionResponse, error)
-	ListExceptions(context.Context, uuid.UUID) ([]dto.ExceptionResponse, error)
-	GenerateSlots(context.Context, dto.SlotGeneratorRequest) (dto.SlotGeneratorResponse, error)
+	CreateAvailability(context.Context, uuid.UUID, dto.AvailabilityRequest, *uuid.UUID) (dto.AvailabilityResponse, error)
+	ListAvailability(context.Context, uuid.UUID, *uuid.UUID) ([]dto.AvailabilityResponse, error)
+	CreateException(context.Context, uuid.UUID, dto.ExceptionRequest, *uuid.UUID) (dto.ExceptionResponse, error)
+	ListExceptions(context.Context, uuid.UUID, *uuid.UUID) ([]dto.ExceptionResponse, error)
+	GenerateSlots(context.Context, dto.SlotGeneratorRequest, *uuid.UUID) (dto.SlotGeneratorResponse, error)
 	ListAvailableSlots(context.Context, uuid.UUID, *uuid.UUID, *uuid.UUID, string, pagination.Page) ([]dto.SlotResponse, error)
 }
 
@@ -30,7 +30,27 @@ func NewSchedulingService(repo repositories.SchedulingRepository) SchedulingServ
 	return &schedulingService{repo: repo}
 }
 
-func (s *schedulingService) CreateAvailability(ctx context.Context, providerID uuid.UUID, req dto.AvailabilityRequest) (dto.AvailabilityResponse, error) {
+// ensureProviderScope verifies that the provider belongs to the caller's tenant
+// scope. adminUser (scope == nil) bypasses the check. A cross-tenant provider is
+// reported as ErrNotFound to avoid leaking existence.
+func (s *schedulingService) ensureProviderScope(ctx context.Context, providerID uuid.UUID, scope *uuid.UUID) error {
+	if scope == nil {
+		return nil
+	}
+	provider, err := s.repo.GetProvider(ctx, providerID)
+	if err != nil {
+		return err
+	}
+	if provider.TenantID != *scope {
+		return response.ErrNotFound
+	}
+	return nil
+}
+
+func (s *schedulingService) CreateAvailability(ctx context.Context, providerID uuid.UUID, req dto.AvailabilityRequest, scope *uuid.UUID) (dto.AvailabilityResponse, error) {
+	if err := s.ensureProviderScope(ctx, providerID, scope); err != nil {
+		return dto.AvailabilityResponse{}, err
+	}
 	if _, err := time.Parse("15:04", req.StartTime); err != nil {
 		return dto.AvailabilityResponse{}, response.ErrInvalidInput
 	}
@@ -46,12 +66,18 @@ func (s *schedulingService) CreateAvailability(ctx context.Context, providerID u
 	return mapAvailability(item), err
 }
 
-func (s *schedulingService) ListAvailability(ctx context.Context, providerID uuid.UUID) ([]dto.AvailabilityResponse, error) {
+func (s *schedulingService) ListAvailability(ctx context.Context, providerID uuid.UUID, scope *uuid.UUID) ([]dto.AvailabilityResponse, error) {
+	if err := s.ensureProviderScope(ctx, providerID, scope); err != nil {
+		return nil, err
+	}
 	items, err := s.repo.ListAvailability(ctx, providerID)
 	return mapSlice(items, mapAvailability), err
 }
 
-func (s *schedulingService) CreateException(ctx context.Context, providerID uuid.UUID, req dto.ExceptionRequest) (dto.ExceptionResponse, error) {
+func (s *schedulingService) CreateException(ctx context.Context, providerID uuid.UUID, req dto.ExceptionRequest, scope *uuid.UUID) (dto.ExceptionResponse, error) {
+	if err := s.ensureProviderScope(ctx, providerID, scope); err != nil {
+		return dto.ExceptionResponse{}, err
+	}
 	if !req.EndAt.After(req.StartAt) {
 		return dto.ExceptionResponse{}, response.ErrInvalidInput
 	}
@@ -64,7 +90,10 @@ func (s *schedulingService) CreateException(ctx context.Context, providerID uuid
 	return mapException(item), err
 }
 
-func (s *schedulingService) ListExceptions(ctx context.Context, providerID uuid.UUID) ([]dto.ExceptionResponse, error) {
+func (s *schedulingService) ListExceptions(ctx context.Context, providerID uuid.UUID, scope *uuid.UUID) ([]dto.ExceptionResponse, error) {
+	if err := s.ensureProviderScope(ctx, providerID, scope); err != nil {
+		return nil, err
+	}
 	items, err := s.repo.ListExceptions(ctx, providerID)
 	return mapSlice(items, mapException), err
 }
@@ -80,7 +109,16 @@ func (s *schedulingService) ListExceptions(ctx context.Context, providerID uuid.
 // Error handling: unique-constraint violations are skipped silently (the slot
 // already exists). Any other DB error is propagated immediately — the caller
 // learns about the failure instead of receiving a wrong count.
-func (s *schedulingService) GenerateSlots(ctx context.Context, req dto.SlotGeneratorRequest) (dto.SlotGeneratorResponse, error) {
+func (s *schedulingService) GenerateSlots(ctx context.Context, req dto.SlotGeneratorRequest, scope *uuid.UUID) (dto.SlotGeneratorResponse, error) {
+	if scope != nil {
+		// Force the tenant to the caller's scope (ignore any body tenant_id) and
+		// verify the target provider belongs to that tenant.
+		req.TenantID = *scope
+		if err := s.ensureProviderScope(ctx, req.ProviderID, scope); err != nil {
+			return dto.SlotGeneratorResponse{}, err
+		}
+	}
+
 	slotMinutes := req.SlotMinutes
 	if slotMinutes <= 0 {
 		slotMinutes = 30
@@ -121,7 +159,7 @@ func (s *schedulingService) GenerateSlots(ctx context.Context, req dto.SlotGener
 			}
 			cursor := combineInLoc(day, av.StartTime.Format("15:04:05"), loc)
 			periodEnd := combineInLoc(day, av.EndTime.Format("15:04:05"), loc)
-			for cursor.Add(time.Duration(slotMinutes) * time.Minute).Compare(periodEnd) <= 0 {
+			for cursor.Add(time.Duration(slotMinutes)*time.Minute).Compare(periodEnd) <= 0 {
 				slotEnd := cursor.Add(time.Duration(slotMinutes) * time.Minute)
 				if !overlapsAny(cursor, slotEnd, exceptions) {
 					_, err := s.repo.CreateSlot(ctx, db.CreateAppointmentSlotParams{
