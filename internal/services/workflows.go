@@ -7,25 +7,25 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/mousav1/ticket/internal/api/dto"
-	"github.com/mousav1/ticket/internal/api/response"
-	db "github.com/mousav1/ticket/internal/db/sqlc"
-	"github.com/mousav1/ticket/internal/platform/pagination"
-	"github.com/mousav1/ticket/internal/repositories"
+	"github.com/unknowncode44/appointments/internal/api/dto"
+	"github.com/unknowncode44/appointments/internal/api/response"
+	db "github.com/unknowncode44/appointments/internal/db/sqlc"
+	"github.com/unknowncode44/appointments/internal/platform/pagination"
+	"github.com/unknowncode44/appointments/internal/repositories"
 )
 
 type AppointmentService interface {
-	Create(context.Context, dto.AppointmentCreateRequest) (dto.AppointmentResponse, error)
+	Create(context.Context, dto.AppointmentCreateRequest, *uuid.UUID) (dto.AppointmentResponse, error)
 	List(context.Context, uuid.UUID, *uuid.UUID, *uuid.UUID, string, pagination.Page) (pagination.Response[dto.AppointmentResponse], error)
-	Get(context.Context, uuid.UUID) (dto.AppointmentResponse, error)
-	Update(context.Context, uuid.UUID, dto.AppointmentUpdateRequest) (dto.AppointmentResponse, error)
-	Cancel(context.Context, uuid.UUID) (dto.AppointmentResponse, error)
+	Get(context.Context, uuid.UUID, *uuid.UUID) (dto.AppointmentResponse, error)
+	Update(context.Context, uuid.UUID, dto.AppointmentUpdateRequest, *uuid.UUID) (dto.AppointmentResponse, error)
+	Cancel(context.Context, uuid.UUID, *uuid.UUID) (dto.AppointmentResponse, error)
 }
 
 type ConversationService interface {
 	ListThreads(context.Context, uuid.UUID, pagination.Page) ([]dto.ConversationThreadResponse, error)
-	GetThread(context.Context, uuid.UUID) (dto.ConversationThreadResponse, error)
-	StoreMessage(context.Context, dto.ConversationMessageRequest) (dto.ConversationMessageResponse, error)
+	GetThread(context.Context, uuid.UUID, *uuid.UUID) (dto.ConversationThreadResponse, error)
+	StoreMessage(context.Context, dto.ConversationMessageRequest, *uuid.UUID) (dto.ConversationMessageResponse, error)
 	ProcessInboundMessage(context.Context, dto.InboundMessageRequest) (dto.ConversationMessageResponse, error)
 	ProcessEvolutionWebhook(context.Context, dto.EvolutionWebhookRequest, []byte) error
 }
@@ -48,7 +48,10 @@ func NewConversationService(repo repositories.WorkflowRepository) ConversationSe
 
 // ── Appointment service ───────────────────────────────────────────────────────
 
-func (s *appointmentService) Create(ctx context.Context, req dto.AppointmentCreateRequest) (dto.AppointmentResponse, error) {
+func (s *appointmentService) Create(ctx context.Context, req dto.AppointmentCreateRequest, scope *uuid.UUID) (dto.AppointmentResponse, error) {
+	if scope != nil {
+		req.TenantID = *scope
+	}
 	var created db.Appointment
 	err := s.repo.Store().ExecTx(ctx, func(q *db.Queries) error {
 		slot, err := q.GetAppointmentSlotForUpdate(ctx, req.SlotID)
@@ -99,20 +102,29 @@ func (s *appointmentService) List(ctx context.Context, tenantID uuid.UUID, provi
 	return paged(items, total, p, mapAppointment), err
 }
 
-func (s *appointmentService) Get(ctx context.Context, id uuid.UUID) (dto.AppointmentResponse, error) {
+func (s *appointmentService) Get(ctx context.Context, id uuid.UUID, scope *uuid.UUID) (dto.AppointmentResponse, error) {
 	item, err := s.repo.GetAppointment(ctx, id)
-	return mapAppointment(item), err
+	if err != nil {
+		return dto.AppointmentResponse{}, err
+	}
+	if scope != nil && item.TenantID != *scope {
+		return dto.AppointmentResponse{}, response.ErrNotFound
+	}
+	return mapAppointment(item), nil
 }
 
-func (s *appointmentService) Update(ctx context.Context, id uuid.UUID, req dto.AppointmentUpdateRequest) (dto.AppointmentResponse, error) {
+func (s *appointmentService) Update(ctx context.Context, id uuid.UUID, req dto.AppointmentUpdateRequest, scope *uuid.UUID) (dto.AppointmentResponse, error) {
 	if req.Status != nil && *req.Status == "cancelled" {
-		return s.Cancel(ctx, id)
+		return s.Cancel(ctx, id, scope)
 	}
 	var updated db.Appointment
 	err := s.repo.Store().ExecTx(ctx, func(q *db.Queries) error {
 		current, err := q.GetAppointment(ctx, id)
 		if err != nil {
 			return err
+		}
+		if scope != nil && current.TenantID != *scope {
+			return response.ErrNotFound
 		}
 		next := current
 		if req.ServiceID != nil {
@@ -174,12 +186,15 @@ func (s *appointmentService) Update(ctx context.Context, id uuid.UUID, req dto.A
 }
 
 // Cancel is now correctly on appointmentService (was previously on conversationService).
-func (s *appointmentService) Cancel(ctx context.Context, id uuid.UUID) (dto.AppointmentResponse, error) {
+func (s *appointmentService) Cancel(ctx context.Context, id uuid.UUID, scope *uuid.UUID) (dto.AppointmentResponse, error) {
 	var cancelled db.Appointment
 	err := s.repo.Store().ExecTx(ctx, func(q *db.Queries) error {
 		current, err := q.GetAppointment(ctx, id)
 		if err != nil {
 			return err
+		}
+		if scope != nil && current.TenantID != *scope {
+			return response.ErrNotFound
 		}
 		if current.Status == "cancelled" {
 			return response.ErrConflict
@@ -209,10 +224,13 @@ func (s *conversationService) ListThreads(ctx context.Context, tenantID uuid.UUI
 	return mapSlice(items, mapThread), err
 }
 
-func (s *conversationService) GetThread(ctx context.Context, id uuid.UUID) (dto.ConversationThreadResponse, error) {
+func (s *conversationService) GetThread(ctx context.Context, id uuid.UUID, scope *uuid.UUID) (dto.ConversationThreadResponse, error) {
 	thread, err := s.repo.GetThread(ctx, id)
 	if err != nil {
 		return dto.ConversationThreadResponse{}, err
+	}
+	if scope != nil && thread.TenantID != *scope {
+		return dto.ConversationThreadResponse{}, response.ErrNotFound
 	}
 	messages, err := s.repo.ListMessages(ctx, id)
 	if err != nil {
@@ -223,7 +241,19 @@ func (s *conversationService) GetThread(ctx context.Context, id uuid.UUID) (dto.
 	return resp, nil
 }
 
-func (s *conversationService) StoreMessage(ctx context.Context, req dto.ConversationMessageRequest) (dto.ConversationMessageResponse, error) {
+func (s *conversationService) StoreMessage(ctx context.Context, req dto.ConversationMessageRequest, scope *uuid.UUID) (dto.ConversationMessageResponse, error) {
+	if scope != nil {
+		// Force the tenant to the caller's scope (ignore any body tenant_id) and
+		// verify the target customer belongs to that tenant.
+		req.TenantID = *scope
+		customer, err := s.repo.GetCustomer(ctx, req.CustomerID)
+		if err != nil {
+			return dto.ConversationMessageResponse{}, err
+		}
+		if customer.TenantID != *scope {
+			return dto.ConversationMessageResponse{}, response.ErrNotFound
+		}
+	}
 	var out db.ConversationMessage
 	err := s.repo.Store().ExecTx(ctx, func(q *db.Queries) error {
 		thread, err := q.GetConversationThreadByCustomer(ctx, db.CreateConversationThreadParams{TenantID: req.TenantID, CustomerID: req.CustomerID})

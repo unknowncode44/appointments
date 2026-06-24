@@ -1,4 +1,4 @@
-module github.com/mousav1/ticket
+module github.com/unknowncode44/appointments
 
 go 1.23.0
 

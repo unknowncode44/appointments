@@ -6,7 +6,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
-	"github.com/mousav1/ticket/internal/token"
+	"github.com/unknowncode44/appointments/internal/token"
 )
 
 const AuthorizationPayloadKey = "authorization_payload"
@@ -52,8 +52,8 @@ func RequireTenant(queryParam string) fiber.Handler {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid authorization payload"})
 		}
 
-		// Only enforce for tenantUser; admin sees everything.
-		if payload.Role != "tenantUser" {
+		// Only enforce for non-admin roles; adminUser sees everything.
+		if payload.Role == "adminUser" {
 			return c.Next()
 		}
 

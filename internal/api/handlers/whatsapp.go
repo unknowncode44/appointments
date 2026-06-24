@@ -13,9 +13,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/mousav1/ticket/internal/api/middleware"
-	db "github.com/mousav1/ticket/internal/db/sqlc"
-	"github.com/mousav1/ticket/internal/util"
+	"github.com/unknowncode44/appointments/internal/api/middleware"
+	db "github.com/unknowncode44/appointments/internal/db/sqlc"
+	"github.com/unknowncode44/appointments/internal/util"
 )
 
 type WhatsappHandler struct {

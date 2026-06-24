@@ -19,9 +19,46 @@ Tokens are obtained at login. Three roles exist:
 
 | Role | Description |
 |---|---|
-| `adminUser` | Full platform access |
+| `adminUser` | Full platform access; tenant scope is never enforced |
 | `tenantUser` | Scoped to their own tenant; drives the WhatsApp setup flow |
-| `user` | Read/write access to customers, appointments, and availability |
+| `user` | Scoped to their own tenant; read/write access to customers, appointments, and availability |
+
+### JWT payload fields
+
+Every decoded access token contains:
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | uuid | Session token ID (not the user ID) |
+| `user_id` | int32 | The authenticated user's numeric database ID |
+| `username` | string | |
+| `role` | string | `adminUser`, `tenantUser`, or `user` |
+| `tenant_id` | uuid \| null | Present for `tenantUser` and `user`; absent for `adminUser` |
+| `issued_at` | datetime | |
+| `expired_at` | datetime | |
+
+> `user_id` was added in Fase 0. Clients that previously read `decoded.id` as the user ID must switch to `decoded.user_id`.
+
+---
+
+## Rate limiting
+
+| Scope | Limit |
+|---|---|
+| All routes (global) | 200 requests / minute per IP |
+| `/register` and `/login` | 10 requests / minute per IP (brute-force protection) |
+
+Exceeding either limit returns `429 Too Many Requests`:
+
+```json
+{ "error": "too many requests, please try again later" }
+```
+
+---
+
+## CORS
+
+Allowed origins are controlled by the `ALLOWED_ORIGINS` server configuration variable (comma-separated). Requests from unlisted origins are rejected by the browser. Allowed methods: `GET, POST, HEAD, PUT, DELETE, PATCH, OPTIONS`. Allowed headers: `Origin, Content-Type, Accept, Authorization`.
 
 ---
 
@@ -39,9 +76,10 @@ Common status codes:
 |---|---|
 | 400 | Bad request / validation failure |
 | 401 | Missing or invalid token |
-| 403 | Role not allowed / tenant mismatch |
-| 404 | Resource not found |
-| 409 | Conflict (duplicate) |
+| 403 | Role not allowed for this endpoint |
+| 404 | Resource not found — also returned when a non-admin accesses a resource belonging to a different tenant (prevents existence leakage) |
+| 409 | Conflict (duplicate booking, slot already reserved) |
+| 429 | Rate limit exceeded |
 | 502 | Upstream service (EVO API) failure |
 
 ---
@@ -58,6 +96,30 @@ Paginated responses have this envelope:
   "page_size": 20,
   "total":     42
 }
+```
+
+---
+
+## 0. Health — no auth required
+
+### GET `/healthz`
+
+Liveness probe. Returns `200 OK` immediately without checking dependencies. Use this to verify the process is running.
+
+**Response `200`** — no body.
+
+---
+
+### GET `/readyz`
+
+Readiness probe. Returns `200 OK` only when the database is reachable. Use this in load-balancer health checks.
+
+**Response `200`** — no body.
+
+**Response `503`** (database unavailable):
+
+```json
+{ "error": "db unavailable" }
 ```
 
 ---
@@ -375,7 +437,7 @@ Unlinks a user from a provider. Roles: `adminUser`, `tenantUser`.
 
 ## 5. Providers — `adminUser`, `tenantUser`
 
-> `tenantUser` can only access providers belonging to their own tenant.
+> **Tenant isolation:** `tenantUser` and `user` can only access providers belonging to their own tenant. Accessing a provider from a different tenant returns `404` (not `403`) to prevent cross-tenant existence leakage. On `POST`, the `tenant_id` in the request body is silently overridden with the caller's JWT `tenant_id`.
 
 ### GET `/api/v1/providers`
 
@@ -438,6 +500,8 @@ Deactivates the provider.
 **Response `200`** — deactivated provider object.
 
 ---
+
+> **Tenant isolation:** the availability and exception endpoints below (`POST`/`GET .../availability`, `POST`/`GET .../exceptions`) verify that the provider in the `:id` path belongs to the caller's tenant. For `tenantUser` and `user`, a provider from a different tenant returns `404` (not `403`). `adminUser` bypasses the check.
 
 ### POST `/api/v1/providers/:id/availability`
 
@@ -751,6 +815,8 @@ Pre-generates appointment slots for a provider based on their weekly availabilit
 > `slot_minutes`: optional, defaults to the service duration.  
 > `timezone`: optional, defaults to UTC.
 
+> **Tenant isolation:** for `tenantUser` and `user`, `tenant_id` is forced from the JWT (any value in the body is ignored), and the target `provider_id` must belong to that tenant — otherwise `404` is returned. `adminUser` bypasses the check.
+
 **Response `201`**
 
 ```json
@@ -809,11 +875,23 @@ Returns open appointment slots.
   "slot_id":     "uuid | null",
   "start_at":    "datetime",
   "end_at":      "datetime",
-  "status":      "reserved | cancelled",
+  "status":      "confirmed | cancelled | completed | no_show",
   "notes":       "string | null",
   "created_at":  "datetime",
   "updated_at":  "datetime"
 }
+```
+
+Valid status values:
+
+| Status | Meaning |
+|---|---|
+| `confirmed` | Slot reserved; appointment is active (set on creation) |
+| `cancelled` | Appointment cancelled; slot released back to available |
+| `completed` | Appointment was attended |
+| `no_show` | Customer did not show up |
+
+> A DB `CHECK` constraint enforces these four values. Any other status sent via `PATCH` will be rejected with `400 Bad Request`.
 ```
 
 ### POST `/api/v1/appointments`
@@ -852,16 +930,20 @@ Reserves a slot and creates an appointment.
 
 ### PATCH `/api/v1/appointments/:id`
 
+Updates one or more fields. All fields are optional. Sending `"status": "cancelled"` is equivalent to calling `DELETE` — it triggers the full cancellation flow (slot released, event recorded).
+
 **Request body** (all fields optional)
 
 ```json
 {
-  "status":     "reserved | cancelled",
+  "status":     "confirmed | cancelled | completed | no_show",
   "slot_id":    "uuid | null",
   "service_id": "uuid | null",
   "notes":      "string | null"
 }
 ```
+
+> Non-admin callers can only patch appointments that belong to their own tenant. Cross-tenant attempts return `404`.
 
 **Response `200`** — updated appointment object.
 
@@ -941,6 +1023,8 @@ Stores a message in a conversation thread (creates the thread if needed).
   "metadata":    {}
 }
 ```
+
+> **Tenant isolation:** for `tenantUser`, `tenant_id` is forced from the JWT (any value in the body is ignored), and the supplied `customer_id` must belong to that tenant — otherwise `404` is returned. `adminUser` bypasses the check.
 
 **Response `201`** — message object.
 

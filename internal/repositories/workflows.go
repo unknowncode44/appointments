@@ -4,11 +4,12 @@ import (
 	"context"
 
 	"github.com/google/uuid"
-	db "github.com/mousav1/ticket/internal/db/sqlc"
+	db "github.com/unknowncode44/appointments/internal/db/sqlc"
 )
 
 type WorkflowRepository interface {
 	Store() *db.Store
+	GetCustomer(context.Context, uuid.UUID) (db.Customer, error)
 	ListAppointments(context.Context, db.ListAppointmentsParams) ([]db.Appointment, int64, error)
 	GetAppointment(context.Context, uuid.UUID) (db.Appointment, error)
 	ListThreads(context.Context, db.ListConversationThreadsParams) ([]db.ConversationThread, error)
@@ -24,6 +25,10 @@ func NewWorkflowRepository(store *db.Store) WorkflowRepository {
 }
 
 func (r *workflowRepository) Store() *db.Store { return r.store }
+
+func (r *workflowRepository) GetCustomer(ctx context.Context, id uuid.UUID) (db.Customer, error) {
+	return r.store.GetCustomer(ctx, id)
+}
 
 func (r *workflowRepository) ListAppointments(ctx context.Context, arg db.ListAppointmentsParams) ([]db.Appointment, int64, error) {
 	items, err := r.store.ListAppointments(ctx, arg)

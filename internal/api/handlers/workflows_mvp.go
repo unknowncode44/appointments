@@ -3,10 +3,10 @@ package handlers
 import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
-	"github.com/mousav1/ticket/internal/api/dto"
-	"github.com/mousav1/ticket/internal/api/response"
-	"github.com/mousav1/ticket/internal/platform/pagination"
-	"github.com/mousav1/ticket/internal/services"
+	"github.com/unknowncode44/appointments/internal/api/dto"
+	"github.com/unknowncode44/appointments/internal/api/response"
+	"github.com/unknowncode44/appointments/internal/platform/pagination"
+	"github.com/unknowncode44/appointments/internal/services"
 )
 
 type AppointmentMVPHandler struct{ service services.AppointmentService }
@@ -21,11 +21,15 @@ func NewConversationMVPHandler(service services.ConversationService) *Conversati
 }
 
 func (h *AppointmentMVPHandler) Create(c *fiber.Ctx) error {
+	scope, err := callerTenantScope(c)
+	if err != nil {
+		return response.Error(c, err)
+	}
 	var req dto.AppointmentCreateRequest
 	if err := bindAndValidate(c, &req); err != nil {
 		return response.BadRequest(c, err)
 	}
-	rsp, err := h.service.Create(c.Context(), req)
+	rsp, err := h.service.Create(c.Context(), req, scope)
 	if err != nil {
 		return response.Error(c, err)
 	}
@@ -57,7 +61,11 @@ func (h *AppointmentMVPHandler) Get(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
-	rsp, err := h.service.Get(c.Context(), id)
+	scope, err := callerTenantScope(c)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	rsp, err := h.service.Get(c.Context(), id, scope)
 	if err != nil {
 		return response.Error(c, err)
 	}
@@ -69,11 +77,15 @@ func (h *AppointmentMVPHandler) Update(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
+	scope, err := callerTenantScope(c)
+	if err != nil {
+		return response.Error(c, err)
+	}
 	var req dto.AppointmentUpdateRequest
 	if err := bindAndValidate(c, &req); err != nil {
 		return response.BadRequest(c, err)
 	}
-	rsp, err := h.service.Update(c.Context(), id, req)
+	rsp, err := h.service.Update(c.Context(), id, req, scope)
 	if err != nil {
 		return response.Error(c, err)
 	}
@@ -85,7 +97,11 @@ func (h *AppointmentMVPHandler) Delete(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
-	rsp, err := h.service.Cancel(c.Context(), id)
+	scope, err := callerTenantScope(c)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	rsp, err := h.service.Cancel(c.Context(), id, scope)
 	if err != nil {
 		return response.Error(c, err)
 	}
@@ -109,7 +125,11 @@ func (h *ConversationMVPHandler) Get(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
-	rsp, err := h.service.GetThread(c.Context(), id)
+	scope, err := callerTenantScope(c)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	rsp, err := h.service.GetThread(c.Context(), id, scope)
 	if err != nil {
 		return response.Error(c, err)
 	}
@@ -117,11 +137,15 @@ func (h *ConversationMVPHandler) Get(c *fiber.Ctx) error {
 }
 
 func (h *ConversationMVPHandler) Message(c *fiber.Ctx) error {
+	scope, err := callerTenantScope(c)
+	if err != nil {
+		return response.Error(c, err)
+	}
 	var req dto.ConversationMessageRequest
 	if err := bindAndValidate(c, &req); err != nil {
 		return response.BadRequest(c, err)
 	}
-	rsp, err := h.service.StoreMessage(c.Context(), req)
+	rsp, err := h.service.StoreMessage(c.Context(), req, scope)
 	if err != nil {
 		return response.Error(c, err)
 	}

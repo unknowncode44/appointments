@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/mousav1/ticket/internal/token"
-	"github.com/mousav1/ticket/internal/util"
+	"github.com/unknowncode44/appointments/internal/token"
+	"github.com/unknowncode44/appointments/internal/util"
 	"github.com/stretchr/testify/require"
 )
 
@@ -20,7 +20,7 @@ func TestJWTMaker(t *testing.T) {
 	issuedAt := time.Now()
 	expiredAt := issuedAt.Add(duration)
 
-	token, payload, err := maker.CreateToken(username, role, nil, duration)
+	token, payload, err := maker.CreateToken(username, role, 0, nil, duration)
 	require.NoError(t, err)
 	require.NotEmpty(t, token)
 	require.NotEmpty(t, payload)
@@ -42,7 +42,7 @@ func TestExpiredJWTToken(t *testing.T) {
 	maker, err := token.NewJWTMaker(util.RandomString(32))
 	require.NoError(t, err)
 
-	token, payload, err := maker.CreateToken(util.RandomUsername(), "user", nil, -time.Minute)
+	token, payload, err := maker.CreateToken(util.RandomUsername(), "user", 0, nil, -time.Minute)
 	require.NoError(t, err)
 	require.NotEmpty(t, token)
 	require.NotEmpty(t, payload)
@@ -53,7 +53,7 @@ func TestExpiredJWTToken(t *testing.T) {
 }
 
 func TestInvalidJWTTokenAlgNone(t *testing.T) {
-	payload, err := token.NewPayload(util.RandomUsername(), "user", nil, time.Minute)
+	payload, err := token.NewPayload(util.RandomUsername(), "user", 0, nil, time.Minute)
 	require.NoError(t, err)
 
 	jwtToken := jwt.NewWithClaims(jwt.SigningMethodNone, payload)
