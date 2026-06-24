@@ -8,8 +8,9 @@ import (
 )
 
 type TenantRequest struct {
-	Name     string `json:"name" validate:"required"`
-	Timezone string `json:"timezone" validate:"required"`
+	Name     string  `json:"name" validate:"required"`
+	Timezone string  `json:"timezone" validate:"required"`
+	Slug     *string `json:"slug" validate:"omitempty,slug"`
 }
 
 type TenantResponse struct {
@@ -19,6 +20,7 @@ type TenantResponse struct {
 	Active    bool      `json:"active"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+	Slug      *string   `json:"slug,omitempty"`
 }
 
 type ProviderRequest struct {
@@ -78,6 +80,8 @@ type CustomerResponse struct {
 	TenantID  uuid.UUID `json:"tenant_id"`
 	FirstName *string   `json:"first_name,omitempty"`
 	LastName  *string   `json:"last_name,omitempty"`
+	Phone     *string   `json:"phone,omitempty"`
+	Email     *string   `json:"email,omitempty"`
 	Notes     *string   `json:"notes,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -242,10 +246,10 @@ type EvolutionWebhookRequest struct {
 }
 
 type EvolutionData struct {
-	Key          EvolutionKey          `json:"key"`
-	Message      EvolutionMessageBody  `json:"message"`
-	PushName     string                `json:"pushName"`
-	MessageType  string                `json:"messageType"`
+	Key         EvolutionKey         `json:"key"`
+	Message     EvolutionMessageBody `json:"message"`
+	PushName    string               `json:"pushName"`
+	MessageType string               `json:"messageType"`
 }
 
 type EvolutionKey struct {
@@ -255,8 +259,8 @@ type EvolutionKey struct {
 }
 
 type EvolutionMessageBody struct {
-	Conversation         string `json:"conversation"`
-	ExtendedTextMessage  *EvolutionExtendedText `json:"extendedTextMessage,omitempty"`
+	Conversation        string                 `json:"conversation"`
+	ExtendedTextMessage *EvolutionExtendedText `json:"extendedTextMessage,omitempty"`
 }
 
 type EvolutionExtendedText struct {

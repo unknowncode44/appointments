@@ -53,11 +53,11 @@ func (s *adminService) GetTenant(ctx context.Context, id uuid.UUID) (dto.TenantR
 	return mapTenant(item), err
 }
 func (s *adminService) CreateTenant(ctx context.Context, req dto.TenantRequest) (dto.TenantResponse, error) {
-	item, err := s.repo.CreateTenant(ctx, db.CreateTenantParams{Name: req.Name, Timezone: req.Timezone})
+	item, err := s.repo.CreateTenant(ctx, db.CreateTenantParams{Name: req.Name, Timezone: req.Timezone, Slug: repositories.Text(req.Slug)})
 	return mapTenant(item), err
 }
 func (s *adminService) UpdateTenant(ctx context.Context, id uuid.UUID, req dto.TenantRequest) (dto.TenantResponse, error) {
-	item, err := s.repo.UpdateTenant(ctx, db.UpdateTenantParams{ID: id, Name: req.Name, Timezone: req.Timezone})
+	item, err := s.repo.UpdateTenant(ctx, db.UpdateTenantParams{ID: id, Name: req.Name, Timezone: req.Timezone, Slug: repositories.Text(req.Slug)})
 	return mapTenant(item), err
 }
 func (s *adminService) DeactivateTenant(ctx context.Context, id uuid.UUID) (dto.TenantResponse, error) {

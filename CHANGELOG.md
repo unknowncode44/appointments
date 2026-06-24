@@ -5,6 +5,50 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased] — `feat/fase2-public-booking`
+
+### Added
+
+- **F2.1 — Public, no-auth booking flow.**
+  A new `/public/:slug` route group lets an end customer self-book an
+  appointment from a shareable link without logging in. The tenant is resolved
+  from the URL `slug`; every query is scoped to that tenant (the slug *is* the
+  scope). Endpoints:
+  - `GET /public/:slug` — shop header (name, timezone, slug).
+  - `GET /public/:slug/services` — active services.
+  - `GET /public/:slug/providers` — active providers.
+  - `GET /public/:slug/availability?date=&provider_id=` — available slots
+    (reuses `ListAvailableSlots`; provider-time, not filtered by service).
+  - `POST /public/:slug/appointments` — create a **`confirmed`** booking
+    (no payment, no `pending`, no slot-hold). Find-or-create customer by phone,
+    then run the shared booking core.
+
+- **`tenants.slug`** (migration `000004`) — optional unique public slug
+  (`[a-z0-9-]`, 3–63 chars). Existing tenants are backfilled from their name.
+  Settable via `POST`/`PUT /api/v1/tenants`.
+
+- **`customers.phone` / `customers.email`** (migration `000005`) — nullable;
+  partial unique index on `(tenant_id, phone)` backs a race-safe
+  `UpsertCustomerByPhone`.
+
+### Changed
+
+- **Shared booking core.** The reserve-slot transaction in
+  `appointmentService.Create` was extracted into `bookSlot`, now shared by the
+  authenticated and public booking paths (no duplicated `FOR UPDATE` logic). A
+  slot belonging to another tenant (or missing) is reported as `404`; a visible
+  slot that is no longer available is `409`.
+
+### Security
+
+- **Dedicated rate limiter** on `/public/*` (25 req/min/IP) in addition to the
+  global 200/min limiter, to mitigate scraping and booking abuse.
+- Public booking validates that the `service_id` and `slot_id` belong to the
+  resolved tenant — no public endpoint can read or write another tenant's data.
+- Captcha is recommended as a future follow-up (not implemented).
+
+---
+
 ## [Unreleased] — `fix/fase0-security-hardening`
 
 ### Security

@@ -45,6 +45,16 @@ func SetupRoutes(server *api.Server) error {
 	// ── Webhook (public — Evolution calls without JWT) ──────────────────────
 	server.App.Post("/api/v1/webhooks/evolution", conversationHandler.EvolutionWebhook)
 
+	// ── Public booking (no JWT — tenant resolved from :slug) ────────────────
+	// A stricter rate limiter is applied to /public in internal/api/server.go.
+	publicHandler := handlers.NewPublicHandler(services.NewPublicService(repositories.NewPublicRepository(server.Store)))
+	public := server.App.Group("/public/:slug", publicHandler.ResolveTenant)
+	public.Get("/", publicHandler.Shop)
+	public.Get("/services", publicHandler.Services)
+	public.Get("/providers", publicHandler.Providers)
+	public.Get("/availability", publicHandler.Availability)
+	public.Post("/appointments", publicHandler.CreateBooking)
+
 	// ── Authenticated group ─────────────────────────────────────────────────
 	auth := server.App.Group("/", middleware.AuthMiddleware(server.TokenMaker))
 
