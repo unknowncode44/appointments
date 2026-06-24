@@ -1,5 +1,5 @@
 -- name: ListTenants :many
-SELECT id, name, timezone, active, created_at, updated_at
+SELECT id, name, timezone, active, created_at, updated_at, slug
 FROM tenants
 WHERE ($1::text = '' OR name ILIKE '%' || $1 || '%')
   AND ($2::boolean IS NULL OR active = $2)
@@ -12,26 +12,31 @@ WHERE ($1::text = '' OR name ILIKE '%' || $1 || '%')
   AND ($2::boolean IS NULL OR active = $2);
 
 -- name: GetTenant :one
-SELECT id, name, timezone, active, created_at, updated_at
+SELECT id, name, timezone, active, created_at, updated_at, slug
 FROM tenants
 WHERE id = $1;
 
+-- name: GetTenantBySlug :one
+SELECT id, name, timezone, active, created_at, updated_at, slug
+FROM tenants
+WHERE slug = $1 AND active = true;
+
 -- name: CreateTenant :one
-INSERT INTO tenants (name, timezone)
-VALUES ($1, $2)
-RETURNING id, name, timezone, active, created_at, updated_at;
+INSERT INTO tenants (name, timezone, slug)
+VALUES ($1, $2, $3)
+RETURNING id, name, timezone, active, created_at, updated_at, slug;
 
 -- name: UpdateTenant :one
 UPDATE tenants
-SET name = $2, timezone = $3, updated_at = now()
+SET name = $2, timezone = $3, slug = $4, updated_at = now()
 WHERE id = $1
-RETURNING id, name, timezone, active, created_at, updated_at;
+RETURNING id, name, timezone, active, created_at, updated_at, slug;
 
 -- name: DeactivateTenant :one
 UPDATE tenants
 SET active = false, updated_at = now()
 WHERE id = $1
-RETURNING id, name, timezone, active, created_at, updated_at;
+RETURNING id, name, timezone, active, created_at, updated_at, slug;
 
 -- name: ListProviders :many
 SELECT id, tenant_id, name, active, created_at, updated_at
@@ -108,7 +113,7 @@ WHERE id = $1
 RETURNING id, tenant_id, name, duration_minutes, active, created_at, updated_at;
 
 -- name: ListCustomers :many
-SELECT id, tenant_id, first_name, last_name, notes, created_at, updated_at
+SELECT id, tenant_id, first_name, last_name, notes, created_at, updated_at, phone, email
 FROM customers
 WHERE tenant_id = $1
   AND ($2::text = '' OR coalesce(first_name, '') ILIKE '%' || $2 || '%' OR coalesce(last_name, '') ILIKE '%' || $2 || '%')
@@ -121,20 +126,34 @@ WHERE tenant_id = $1
   AND ($2::text = '' OR coalesce(first_name, '') ILIKE '%' || $2 || '%' OR coalesce(last_name, '') ILIKE '%' || $2 || '%');
 
 -- name: GetCustomer :one
-SELECT id, tenant_id, first_name, last_name, notes, created_at, updated_at
+SELECT id, tenant_id, first_name, last_name, notes, created_at, updated_at, phone, email
 FROM customers
 WHERE id = $1;
 
 -- name: CreateCustomer :one
 INSERT INTO customers (tenant_id, first_name, last_name, notes)
 VALUES ($1, $2, $3, $4)
-RETURNING id, tenant_id, first_name, last_name, notes, created_at, updated_at;
+RETURNING id, tenant_id, first_name, last_name, notes, created_at, updated_at, phone, email;
 
 -- name: UpdateCustomer :one
 UPDATE customers
 SET first_name = $2, last_name = $3, notes = $4, updated_at = now()
 WHERE id = $1
-RETURNING id, tenant_id, first_name, last_name, notes, created_at, updated_at;
+RETURNING id, tenant_id, first_name, last_name, notes, created_at, updated_at, phone, email;
+
+-- name: UpsertCustomerByPhone :one
+-- Race-safe find-or-create for public bookers identified by (tenant_id, phone).
+-- On conflict we update names/email when new values are provided, keeping the
+-- existing customer row (and its id) stable.
+INSERT INTO customers (tenant_id, first_name, last_name, phone, email)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (tenant_id, phone) WHERE phone IS NOT NULL
+DO UPDATE SET
+    first_name = COALESCE(EXCLUDED.first_name, customers.first_name),
+    last_name  = COALESCE(EXCLUDED.last_name, customers.last_name),
+    email      = COALESCE(EXCLUDED.email, customers.email),
+    updated_at = now()
+RETURNING id, tenant_id, first_name, last_name, notes, created_at, updated_at, phone, email;
 
 -- name: ListTenantChannels :many
 SELECT id, tenant_id, channel_type, external_id, external_key, active, created_at
