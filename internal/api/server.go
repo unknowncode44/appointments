@@ -65,6 +65,20 @@ func NewServer(config util.Config, store *db.Store) (*Server, error) {
 	app.Use("/register", authLimiter)
 	app.Use("/login", authLimiter)
 
+	// Stricter rate-limit on the public, no-auth booking endpoints (in addition
+	// to the global limiter) to mitigate scraping and booking abuse.
+	publicLimiter := limiter.New(limiter.Config{
+		Max:        25,
+		Expiration: 1 * time.Minute,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			return c.IP()
+		},
+		LimitReached: func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{"error": "too many requests, please try again later"})
+		},
+	})
+	app.Use("/public", publicLimiter)
+
 	server := &Server{
 		Config:     config,
 		Store:      store,

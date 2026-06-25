@@ -8,12 +8,13 @@ import (
 )
 
 type Tenant struct {
-	ID        uuid.UUID `json:"id"`
-	Name      string    `json:"name"`
-	Timezone  string    `json:"timezone"`
-	Active    bool      `json:"active"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID        uuid.UUID   `json:"id"`
+	Name      string      `json:"name"`
+	Timezone  string      `json:"timezone"`
+	Active    bool        `json:"active"`
+	CreatedAt time.Time   `json:"created_at"`
+	UpdatedAt time.Time   `json:"updated_at"`
+	Slug      pgtype.Text `json:"slug"`
 }
 
 type Provider struct {
@@ -43,6 +44,8 @@ type Customer struct {
 	Notes     pgtype.Text `json:"notes"`
 	CreatedAt time.Time   `json:"created_at"`
 	UpdatedAt time.Time   `json:"updated_at"`
+	Phone     pgtype.Text `json:"phone"`
+	Email     pgtype.Text `json:"email"`
 }
 
 type CustomerChannel struct {

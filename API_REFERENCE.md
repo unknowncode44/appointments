@@ -47,6 +47,7 @@ Every decoded access token contains:
 |---|---|
 | All routes (global) | 200 requests / minute per IP |
 | `/register` and `/login` | 10 requests / minute per IP (brute-force protection) |
+| `/public/*` | 25 requests / minute per IP (anti-abuse on no-auth booking) |
 
 Exceeding either limit returns `429 Too Many Requests`:
 
@@ -278,11 +279,16 @@ Returns the profile of the authenticated user.
 ```json
 {
   "name":     "string",
-  "timezone": "string (IANA, e.g. America/Argentina/Buenos_Aires)"
+  "timezone": "string (IANA, e.g. America/Argentina/Buenos_Aires)",
+  "slug":     "string (optional) — public booking slug; lowercase [a-z0-9-], 3–63 chars, unique"
 }
 ```
 
-**Response `201`** — tenant object.
+> `slug` is optional. When set, it identifies the tenant in the public booking
+> URLs (`/public/:slug/...`). A tenant without a slug is simply not publicly
+> bookable. Set or change it via `POST`/`PUT /api/v1/tenants`.
+
+**Response `201`** — tenant object (now includes `slug`).
 
 ---
 
@@ -1163,3 +1169,98 @@ Receives incoming events from the Evolution API (WhatsApp). This endpoint is cal
 **Request body** — Evolution API v2 payload (handled internally).
 
 **Response `202`** — no body.
+
+---
+
+## 14. Public booking — no auth (tenant resolved from slug)
+
+These endpoints power the shareable public booking page. There is **no JWT**:
+the tenant is identified solely by the `:slug` segment, and every query is
+scoped to that tenant. An unknown or inactive slug returns `404`. The
+`/public/*` group has a stricter rate limit (25 req/min/IP).
+
+To make a tenant bookable, set its `slug` via `POST`/`PUT /api/v1/tenants`
+(e.g. `"slug": "barberia-juan"`), then share `…/public/barberia-juan`.
+
+### GET `/public/:slug`
+
+Shop header for the booking page.
+
+**Response `200`**
+
+```json
+{ "name": "Barbería Juan", "timezone": "America/Argentina/Buenos_Aires", "slug": "barberia-juan" }
+```
+
+### GET `/public/:slug/services`
+
+Active services for the tenant.
+
+**Response `200`**
+
+```json
+{ "data": [ { "id": "uuid", "name": "Corte", "duration_minutes": 30 } ] }
+```
+
+### GET `/public/:slug/providers`
+
+Active providers for the tenant.
+
+**Response `200`**
+
+```json
+{ "data": [ { "id": "uuid", "name": "Juan" } ] }
+```
+
+### GET `/public/:slug/availability?date=YYYY-MM-DD&provider_id=uuid`
+
+Available slots for the resolved tenant on the given day. `provider_id` is
+optional. Slots are provider-time and are **not** filtered by service.
+
+**Response `200`**
+
+```json
+{ "data": [ { "id": "uuid", "provider_id": "uuid", "start_at": "2026-06-25T13:00:00Z", "end_at": "2026-06-25T13:30:00Z" } ] }
+```
+
+### POST `/public/:slug/appointments`
+
+Self-service booking. The customer is found-or-created by phone within the
+tenant. The booking is created with status `confirmed` (no payment, no hold).
+
+**Request body**
+
+```json
+{
+  "first_name": "Ada",
+  "last_name":  "Lovelace (optional)",
+  "phone":      "+5491100000000",
+  "email":      "ada@example.com (optional)",
+  "service_id": "uuid",
+  "slot_id":    "uuid",
+  "notes":      "optional"
+}
+```
+
+`first_name`, `phone`, `service_id` and `slot_id` are required.
+
+**Response `201`**
+
+```json
+{
+  "id": "uuid",
+  "status": "confirmed",
+  "provider_id": "uuid",
+  "service_id": "uuid",
+  "start_at": "2026-06-25T13:00:00Z",
+  "end_at": "2026-06-25T13:30:00Z"
+}
+```
+
+**Errors**
+
+| Status | When |
+|---|---|
+| `404` | unknown/inactive slug; a `slot_id` or `service_id` that belongs to another tenant |
+| `409` | the slot belongs to this tenant but is no longer available |
+| `400` | missing/invalid fields |
