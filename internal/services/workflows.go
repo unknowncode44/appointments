@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/unknowncode44/appointments/internal/api/dto"
 	"github.com/unknowncode44/appointments/internal/api/response"
 	db "github.com/unknowncode44/appointments/internal/db/sqlc"
@@ -54,40 +55,74 @@ func (s *appointmentService) Create(ctx context.Context, req dto.AppointmentCrea
 	}
 	var created db.Appointment
 	err := s.repo.Store().ExecTx(ctx, func(q *db.Queries) error {
-		slot, err := q.GetAppointmentSlotForUpdate(ctx, req.SlotID)
-		if err != nil {
-			return err
-		}
-		if slot.Status != "available" || slot.TenantID != req.TenantID {
-			return response.ErrConflict
-		}
-		appt, err := q.CreateAppointment(ctx, db.CreateAppointmentParams{
+		appt, err := bookSlot(ctx, q, bookSlotParams{
 			TenantID:   req.TenantID,
 			CustomerID: req.CustomerID,
-			ProviderID: slot.ProviderID,
 			ServiceID:  req.ServiceID,
-			SlotID:     uuid.NullUUID{UUID: slot.ID, Valid: true},
-			StartAt:    slot.StartAt,
-			EndAt:      slot.EndAt,
-			Status:     "confirmed",
+			SlotID:     req.SlotID,
 			Notes:      repositories.Text(req.Notes),
 		})
 		if err != nil {
-			return err
-		}
-		if _, err := q.ReserveAppointmentSlot(ctx, db.ReserveAppointmentSlotParams{ID: slot.ID, AppointmentID: appt.ID}); err != nil {
-			return err
-		}
-		if _, err := q.CreateAppointmentEvent(ctx, db.CreateAppointmentEventParams{AppointmentID: appt.ID, EventType: "created", Payload: []byte(`{}`)}); err != nil {
-			return err
-		}
-		if _, err := q.CreateAppointmentEvent(ctx, db.CreateAppointmentEventParams{AppointmentID: appt.ID, EventType: "confirmed", Payload: []byte(`{}`)}); err != nil {
 			return err
 		}
 		created = appt
 		return nil
 	})
 	return mapAppointment(created), err
+}
+
+// bookSlotParams carries the inputs for the shared booking core.
+type bookSlotParams struct {
+	TenantID   uuid.UUID
+	CustomerID uuid.UUID
+	ServiceID  uuid.UUID
+	SlotID     uuid.UUID
+	Notes      pgtype.Text
+}
+
+// bookSlot is the race-safe booking core shared by the authenticated and public
+// booking paths. It must run inside an ExecTx. It locks the slot FOR UPDATE,
+// verifies tenant ownership and availability, creates a confirmed appointment,
+// reserves the slot and records the created/confirmed events.
+//
+// A slot that belongs to another tenant (or does not exist) is reported as
+// ErrNotFound — from the caller's tenant scope it simply is not visible. A slot
+// that is visible but no longer available is reported as ErrConflict.
+func bookSlot(ctx context.Context, q *db.Queries, p bookSlotParams) (db.Appointment, error) {
+	slot, err := q.GetAppointmentSlotForUpdate(ctx, p.SlotID)
+	if err != nil {
+		return db.Appointment{}, err
+	}
+	if slot.TenantID != p.TenantID {
+		return db.Appointment{}, response.ErrNotFound
+	}
+	if slot.Status != "available" {
+		return db.Appointment{}, response.ErrConflict
+	}
+	appt, err := q.CreateAppointment(ctx, db.CreateAppointmentParams{
+		TenantID:   p.TenantID,
+		CustomerID: p.CustomerID,
+		ProviderID: slot.ProviderID,
+		ServiceID:  p.ServiceID,
+		SlotID:     uuid.NullUUID{UUID: slot.ID, Valid: true},
+		StartAt:    slot.StartAt,
+		EndAt:      slot.EndAt,
+		Status:     "confirmed",
+		Notes:      p.Notes,
+	})
+	if err != nil {
+		return db.Appointment{}, err
+	}
+	if _, err := q.ReserveAppointmentSlot(ctx, db.ReserveAppointmentSlotParams{ID: slot.ID, AppointmentID: appt.ID}); err != nil {
+		return db.Appointment{}, err
+	}
+	if _, err := q.CreateAppointmentEvent(ctx, db.CreateAppointmentEventParams{AppointmentID: appt.ID, EventType: "created", Payload: []byte(`{}`)}); err != nil {
+		return db.Appointment{}, err
+	}
+	if _, err := q.CreateAppointmentEvent(ctx, db.CreateAppointmentEventParams{AppointmentID: appt.ID, EventType: "confirmed", Payload: []byte(`{}`)}); err != nil {
+		return db.Appointment{}, err
+	}
+	return appt, nil
 }
 
 func (s *appointmentService) List(ctx context.Context, tenantID uuid.UUID, providerID *uuid.UUID, customerID *uuid.UUID, status string, p pagination.Page) (pagination.Response[dto.AppointmentResponse], error) {

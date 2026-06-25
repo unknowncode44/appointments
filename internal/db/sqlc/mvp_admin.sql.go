@@ -7,10 +7,10 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const tenantCols = "id, name, timezone, active, created_at, updated_at"
+const tenantCols = "id, name, timezone, active, created_at, updated_at, slug"
 const providerCols = "id, tenant_id, name, active, created_at, updated_at"
 const serviceCols = "id, tenant_id, name, duration_minutes, active, created_at, updated_at"
-const customerCols = "id, tenant_id, first_name, last_name, notes, created_at, updated_at"
+const customerCols = "id, tenant_id, first_name, last_name, notes, created_at, updated_at, phone, email"
 const tenantChannelCols = "id, tenant_id, channel_type, external_id, external_key, active, created_at"
 
 type ListTenantsParams struct {
@@ -29,7 +29,7 @@ func (q *Queries) ListTenants(ctx context.Context, arg ListTenantsParams) ([]Ten
 	items := []Tenant{}
 	for rows.Next() {
 		var i Tenant
-		if err := rows.Scan(&i.ID, &i.Name, &i.Timezone, &i.Active, &i.CreatedAt, &i.UpdatedAt); err != nil {
+		if err := rows.Scan(&i.ID, &i.Name, &i.Timezone, &i.Active, &i.CreatedAt, &i.UpdatedAt, &i.Slug); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -45,18 +45,19 @@ func (q *Queries) CountTenants(ctx context.Context, arg ListTenantsParams) (int6
 
 func (q *Queries) GetTenant(ctx context.Context, id uuid.UUID) (Tenant, error) {
 	var i Tenant
-	err := q.db.QueryRow(ctx, "SELECT "+tenantCols+" FROM tenants WHERE id = $1", id).Scan(&i.ID, &i.Name, &i.Timezone, &i.Active, &i.CreatedAt, &i.UpdatedAt)
+	err := q.db.QueryRow(ctx, "SELECT "+tenantCols+" FROM tenants WHERE id = $1", id).Scan(&i.ID, &i.Name, &i.Timezone, &i.Active, &i.CreatedAt, &i.UpdatedAt, &i.Slug)
 	return i, err
 }
 
 type CreateTenantParams struct {
 	Name     string
 	Timezone string
+	Slug     pgtype.Text
 }
 
 func (q *Queries) CreateTenant(ctx context.Context, arg CreateTenantParams) (Tenant, error) {
 	var i Tenant
-	err := q.db.QueryRow(ctx, "INSERT INTO tenants (name, timezone) VALUES ($1, $2) RETURNING "+tenantCols, arg.Name, arg.Timezone).Scan(&i.ID, &i.Name, &i.Timezone, &i.Active, &i.CreatedAt, &i.UpdatedAt)
+	err := q.db.QueryRow(ctx, "INSERT INTO tenants (name, timezone, slug) VALUES ($1, $2, $3) RETURNING "+tenantCols, arg.Name, arg.Timezone, arg.Slug).Scan(&i.ID, &i.Name, &i.Timezone, &i.Active, &i.CreatedAt, &i.UpdatedAt, &i.Slug)
 	return i, err
 }
 
@@ -64,17 +65,26 @@ type UpdateTenantParams struct {
 	ID       uuid.UUID
 	Name     string
 	Timezone string
+	Slug     pgtype.Text
 }
 
 func (q *Queries) UpdateTenant(ctx context.Context, arg UpdateTenantParams) (Tenant, error) {
 	var i Tenant
-	err := q.db.QueryRow(ctx, "UPDATE tenants SET name = $2, timezone = $3, updated_at = now() WHERE id = $1 RETURNING "+tenantCols, arg.ID, arg.Name, arg.Timezone).Scan(&i.ID, &i.Name, &i.Timezone, &i.Active, &i.CreatedAt, &i.UpdatedAt)
+	err := q.db.QueryRow(ctx, "UPDATE tenants SET name = $2, timezone = $3, slug = $4, updated_at = now() WHERE id = $1 RETURNING "+tenantCols, arg.ID, arg.Name, arg.Timezone, arg.Slug).Scan(&i.ID, &i.Name, &i.Timezone, &i.Active, &i.CreatedAt, &i.UpdatedAt, &i.Slug)
 	return i, err
 }
 
 func (q *Queries) DeactivateTenant(ctx context.Context, id uuid.UUID) (Tenant, error) {
 	var i Tenant
-	err := q.db.QueryRow(ctx, "UPDATE tenants SET active = false, updated_at = now() WHERE id = $1 RETURNING "+tenantCols, id).Scan(&i.ID, &i.Name, &i.Timezone, &i.Active, &i.CreatedAt, &i.UpdatedAt)
+	err := q.db.QueryRow(ctx, "UPDATE tenants SET active = false, updated_at = now() WHERE id = $1 RETURNING "+tenantCols, id).Scan(&i.ID, &i.Name, &i.Timezone, &i.Active, &i.CreatedAt, &i.UpdatedAt, &i.Slug)
+	return i, err
+}
+
+// GetTenantBySlug resolves an active tenant by its public slug. Used by the
+// public, no-auth booking flow where the slug is the only tenant identifier.
+func (q *Queries) GetTenantBySlug(ctx context.Context, slug pgtype.Text) (Tenant, error) {
+	var i Tenant
+	err := q.db.QueryRow(ctx, "SELECT "+tenantCols+" FROM tenants WHERE slug = $1 AND active = true", slug).Scan(&i.ID, &i.Name, &i.Timezone, &i.Active, &i.CreatedAt, &i.UpdatedAt, &i.Slug)
 	return i, err
 }
 
@@ -220,7 +230,7 @@ func (q *Queries) ListCustomers(ctx context.Context, arg ListCustomersParams) ([
 	items := []Customer{}
 	for rows.Next() {
 		var i Customer
-		if err := rows.Scan(&i.ID, &i.TenantID, &i.FirstName, &i.LastName, &i.Notes, &i.CreatedAt, &i.UpdatedAt); err != nil {
+		if err := rows.Scan(&i.ID, &i.TenantID, &i.FirstName, &i.LastName, &i.Notes, &i.CreatedAt, &i.UpdatedAt, &i.Phone, &i.Email); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -236,7 +246,7 @@ func (q *Queries) CountCustomers(ctx context.Context, arg ListCustomersParams) (
 
 func (q *Queries) GetCustomer(ctx context.Context, id uuid.UUID) (Customer, error) {
 	var i Customer
-	err := q.db.QueryRow(ctx, "SELECT "+customerCols+" FROM customers WHERE id = $1", id).Scan(&i.ID, &i.TenantID, &i.FirstName, &i.LastName, &i.Notes, &i.CreatedAt, &i.UpdatedAt)
+	err := q.db.QueryRow(ctx, "SELECT "+customerCols+" FROM customers WHERE id = $1", id).Scan(&i.ID, &i.TenantID, &i.FirstName, &i.LastName, &i.Notes, &i.CreatedAt, &i.UpdatedAt, &i.Phone, &i.Email)
 	return i, err
 }
 
@@ -249,7 +259,7 @@ type CreateCustomerParams struct {
 
 func (q *Queries) CreateCustomer(ctx context.Context, arg CreateCustomerParams) (Customer, error) {
 	var i Customer
-	err := q.db.QueryRow(ctx, "INSERT INTO customers (tenant_id, first_name, last_name, notes) VALUES ($1, $2, $3, $4) RETURNING "+customerCols, arg.TenantID, arg.FirstName, arg.LastName, arg.Notes).Scan(&i.ID, &i.TenantID, &i.FirstName, &i.LastName, &i.Notes, &i.CreatedAt, &i.UpdatedAt)
+	err := q.db.QueryRow(ctx, "INSERT INTO customers (tenant_id, first_name, last_name, notes) VALUES ($1, $2, $3, $4) RETURNING "+customerCols, arg.TenantID, arg.FirstName, arg.LastName, arg.Notes).Scan(&i.ID, &i.TenantID, &i.FirstName, &i.LastName, &i.Notes, &i.CreatedAt, &i.UpdatedAt, &i.Phone, &i.Email)
 	return i, err
 }
 
@@ -262,7 +272,7 @@ type UpdateCustomerParams struct {
 
 func (q *Queries) UpdateCustomer(ctx context.Context, arg UpdateCustomerParams) (Customer, error) {
 	var i Customer
-	err := q.db.QueryRow(ctx, "UPDATE customers SET first_name = $2, last_name = $3, notes = $4, updated_at = now() WHERE id = $1 RETURNING "+customerCols, arg.ID, arg.FirstName, arg.LastName, arg.Notes).Scan(&i.ID, &i.TenantID, &i.FirstName, &i.LastName, &i.Notes, &i.CreatedAt, &i.UpdatedAt)
+	err := q.db.QueryRow(ctx, "UPDATE customers SET first_name = $2, last_name = $3, notes = $4, updated_at = now() WHERE id = $1 RETURNING "+customerCols, arg.ID, arg.FirstName, arg.LastName, arg.Notes).Scan(&i.ID, &i.TenantID, &i.FirstName, &i.LastName, &i.Notes, &i.CreatedAt, &i.UpdatedAt, &i.Phone, &i.Email)
 	return i, err
 }
 

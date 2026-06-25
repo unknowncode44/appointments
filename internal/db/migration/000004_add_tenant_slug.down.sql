@@ -1,0 +1,2 @@
+DROP INDEX IF EXISTS tenants_slug_idx;
+ALTER TABLE tenants DROP COLUMN IF EXISTS slug;
