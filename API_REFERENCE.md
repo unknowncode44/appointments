@@ -290,6 +290,9 @@ Returns the profile of the authenticated user.
 
 **Response `201`** — tenant object (now includes `slug`).
 
+**Response `409`** — `{"error":"slug already in use"}` when the `slug` is
+already taken by another tenant (unique `tenants_slug_idx`).
+
 ---
 
 ### GET `/api/v1/tenants/:id`
@@ -303,6 +306,9 @@ Returns the profile of the authenticated user.
 **Request body** — same as `POST /tenants`.
 
 **Response `200`** — updated tenant object.
+
+**Response `409`** — `{"error":"slug already in use"}` when the `slug` is
+already taken by another tenant.
 
 ---
 
