@@ -207,7 +207,7 @@ type UpsertConversationStateParams struct {
 
 func (q *Queries) UpsertConversationState(ctx context.Context, arg UpsertConversationStateParams) (ConversationState, error) {
 	var i ConversationState
-	err := q.db.QueryRow(ctx, "INSERT INTO conversation_state (tenant_id, customer_id, state, data) VALUES ($1, $2, $3, $4) RETURNING id, tenant_id, customer_id, state, data, updated_at", arg.TenantID, arg.CustomerID, arg.State, arg.Data).Scan(&i.ID, &i.TenantID, &i.CustomerID, &i.State, &i.Data, &i.UpdatedAt)
+	err := q.db.QueryRow(ctx, "INSERT INTO conversation_state (tenant_id, customer_id, state, data) VALUES ($1, $2, $3, $4) ON CONFLICT (tenant_id, customer_id) DO UPDATE SET state = EXCLUDED.state, data = EXCLUDED.data, updated_at = now() RETURNING id, tenant_id, customer_id, state, data, updated_at", arg.TenantID, arg.CustomerID, arg.State, arg.Data).Scan(&i.ID, &i.TenantID, &i.CustomerID, &i.State, &i.Data, &i.UpdatedAt)
 	return i, err
 }
 

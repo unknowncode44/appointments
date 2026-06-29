@@ -169,8 +169,9 @@ func (h *ConversationMVPHandler) EvolutionWebhook(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return response.BadRequest(c, err)
 	}
-	if err := h.service.ProcessEvolutionWebhook(c.Context(), req, c.Body()); err != nil {
+	result, err := h.service.ProcessEvolutionWebhook(c.Context(), req, c.Body())
+	if err != nil {
 		return response.Error(c, err)
 	}
-	return c.SendStatus(fiber.StatusAccepted)
+	return c.Status(fiber.StatusAccepted).JSON(result)
 }

@@ -42,8 +42,13 @@ func SetupRoutes(server *api.Server) error {
 	// ── WhatsApp proxy (tenantUser only) ───────────────────────────────────
 	whatsappHandler := handlers.NewWhatsappHandler(server.Store, server.Config)
 
-	// ── Webhook (public — Evolution calls without JWT) ──────────────────────
-	server.App.Post("/api/v1/webhooks/evolution", conversationHandler.EvolutionWebhook)
+	// ── Webhook (public — Evolution calls without JWT, but HMAC-signed) ─────
+	// The webhook stays public (no JWT) but every call must carry a valid
+	// X-Webhook-Signature HMAC of the raw body. The tenant is derived from the
+	// instance, never from the request body.
+	server.App.Post("/api/v1/webhooks/evolution",
+		middleware.VerifyWebhookSignature(server.Config.WebhookSigningSecret),
+		conversationHandler.EvolutionWebhook)
 
 	// ── Public booking (no JWT — tenant resolved from :slug) ────────────────
 	// A stricter rate limiter is applied to /public in internal/api/server.go.

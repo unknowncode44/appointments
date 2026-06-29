@@ -345,6 +345,8 @@ RETURNING id, thread_id, direction, message, metadata, created_at;
 -- name: UpsertConversationState :one
 INSERT INTO conversation_state (tenant_id, customer_id, state, data)
 VALUES ($1, $2, $3, $4)
+ON CONFLICT (tenant_id, customer_id) DO UPDATE
+SET state = EXCLUDED.state, data = EXCLUDED.data, updated_at = now()
 RETURNING id, tenant_id, customer_id, state, data, updated_at;
 
 -- name: CreateWebhookLog :one

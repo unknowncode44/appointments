@@ -245,6 +245,17 @@ type EvolutionWebhookRequest struct {
 	Data EvolutionData `json:"data"`
 }
 
+// EvolutionWebhookResult is the small observability/test-friendly response the
+// webhook returns instead of a bare 202. processed is true when the message was
+// newly handled (FSM advanced); idempotent is true when it was a duplicate.
+type EvolutionWebhookResult struct {
+	Processed   bool       `json:"processed"`
+	Idempotent  bool       `json:"idempotent"`
+	TenantID    *uuid.UUID `json:"tenant_id,omitempty"`
+	CustomerID  *uuid.UUID `json:"customer_id,omitempty"`
+	CurrentStep string     `json:"current_step,omitempty"`
+}
+
 type EvolutionData struct {
 	Key         EvolutionKey         `json:"key"`
 	Message     EvolutionMessageBody `json:"message"`

@@ -28,7 +28,7 @@ type ConversationService interface {
 	GetThread(context.Context, uuid.UUID, *uuid.UUID) (dto.ConversationThreadResponse, error)
 	StoreMessage(context.Context, dto.ConversationMessageRequest, *uuid.UUID) (dto.ConversationMessageResponse, error)
 	ProcessInboundMessage(context.Context, dto.InboundMessageRequest) (dto.ConversationMessageResponse, error)
-	ProcessEvolutionWebhook(context.Context, dto.EvolutionWebhookRequest, []byte) error
+	ProcessEvolutionWebhook(context.Context, dto.EvolutionWebhookRequest, []byte) (dto.EvolutionWebhookResult, error)
 }
 
 type appointmentService struct {
@@ -328,7 +328,7 @@ func (s *conversationService) ProcessInboundMessage(ctx context.Context, req dto
 	if len(metadata) == 0 {
 		metadata, _ = json.Marshal(req)
 	}
-	msg, err := s.storeInboundMessage(ctx, inboundMessage{
+	res, err := s.storeInboundMessage(ctx, inboundMessage{
 		ChannelExternalID:  req.TenantChannelExternalID,
 		ExternalCustomerID: req.ExternalCustomerID,
 		Message:            req.Message,
@@ -337,10 +337,10 @@ func (s *conversationService) ProcessInboundMessage(ctx context.Context, req dto
 		LogPayload:         metadata,
 		State:              "inbound_message_received",
 	})
-	return mapMessage(msg), err
+	return mapMessage(res.Message), err
 }
 
-func (s *conversationService) ProcessEvolutionWebhook(ctx context.Context, req dto.EvolutionWebhookRequest, raw []byte) error {
+func (s *conversationService) ProcessEvolutionWebhook(ctx context.Context, req dto.EvolutionWebhookRequest, raw []byte) (dto.EvolutionWebhookResult, error) {
 	// Resolve external_id: prefer nested instance field, fall back to legacy flat field.
 	externalID := req.Instance
 	if externalID == "" {
@@ -357,7 +357,7 @@ func (s *conversationService) ProcessEvolutionWebhook(ctx context.Context, req d
 	}
 
 	if externalID == "" || externalCustomer == "" {
-		return response.ErrInvalidInput
+		return dto.EvolutionWebhookResult{}, response.ErrInvalidInput
 	}
 
 	// Resolve message text: prefer nested conversation body, then extendedText, then legacy flat field.
@@ -370,21 +370,36 @@ func (s *conversationService) ProcessEvolutionWebhook(ctx context.Context, req d
 	}
 
 	metadata, _ := json.Marshal(req)
-	_, err := s.storeInboundMessage(ctx, inboundMessage{
+	res, err := s.storeInboundMessage(ctx, inboundMessage{
 		ChannelExternalID:  externalID,
 		ExternalCustomerID: externalCustomer,
+		ExternalMessageID:  req.Data.Key.ID,
 		Message:            message,
 		Source:             "evolution",
 		Metadata:           metadata,
 		LogPayload:         raw,
 		State:              "webhook_received",
 	})
-	return err
+	if err != nil {
+		return dto.EvolutionWebhookResult{}, err
+	}
+
+	out := dto.EvolutionWebhookResult{
+		Processed:  !res.Idempotent,
+		Idempotent: res.Idempotent,
+		TenantID:   &res.TenantID,
+	}
+	if res.Idempotent {
+		return out, nil
+	}
+	out.CustomerID = &res.CustomerID
+	return out, nil
 }
 
 type inboundMessage struct {
 	ChannelExternalID  string
 	ExternalCustomerID string
+	ExternalMessageID  string
 	Message            string
 	Source             string
 	Metadata           []byte
@@ -392,13 +407,25 @@ type inboundMessage struct {
 	State              string
 }
 
-// storeInboundMessage resolves the tenant channel, finds-or-creates the customer
-// (upsert-safe to handle concurrent webhooks for the same number), and stores
-// the conversation message — all inside a single transaction.
-func (s *conversationService) storeInboundMessage(ctx context.Context, req inboundMessage) (db.ConversationMessage, error) {
-	var out db.ConversationMessage
+// inboundResult carries the outcome of storing an inbound message: the stored
+// message plus the resolved tenant/customer/channel and whether the message was
+// a duplicate (idempotent) that was skipped.
+type inboundResult struct {
+	Message    db.ConversationMessage
+	Channel    db.TenantChannel
+	TenantID   uuid.UUID
+	CustomerID uuid.UUID
+	Idempotent bool
+}
+
+// storeInboundMessage resolves the tenant channel, applies idempotency by the
+// Evolution message id, finds-or-creates the customer (upsert-safe to handle
+// concurrent webhooks for the same number), and stores the conversation message
+// — all inside a single transaction.
+func (s *conversationService) storeInboundMessage(ctx context.Context, req inboundMessage) (inboundResult, error) {
+	var res inboundResult
 	if req.ChannelExternalID == "" || req.ExternalCustomerID == "" || req.Message == "" {
-		return out, response.ErrInvalidInput
+		return res, response.ErrInvalidInput
 	}
 	if len(req.Metadata) == 0 {
 		req.Metadata = []byte(`{}`)
@@ -410,6 +437,24 @@ func (s *conversationService) storeInboundMessage(ctx context.Context, req inbou
 		channel, err := q.GetTenantChannelByExternalID(ctx, req.ChannelExternalID)
 		if err != nil {
 			return err
+		}
+		res.Channel = channel
+		res.TenantID = channel.TenantID
+
+		// Idempotency: when the inbound carries an Evolution message id, claim it
+		// first. A duplicate id leaves the rest of the work untouched so the same
+		// webhook delivered twice is a no-op.
+		if req.ExternalMessageID != "" {
+			if _, err := q.InsertInboundDedup(ctx, db.InsertInboundDedupParams{
+				TenantID:          channel.TenantID,
+				ExternalMessageID: req.ExternalMessageID,
+			}); err != nil {
+				if errors.Is(err, pgx.ErrNoRows) {
+					res.Idempotent = true
+					return nil
+				}
+				return err
+			}
 		}
 
 		if _, err := q.CreateWebhookLog(ctx, db.CreateWebhookLogParams{
@@ -432,6 +477,7 @@ func (s *conversationService) storeInboundMessage(ctx context.Context, req inbou
 		if err != nil {
 			return err
 		}
+		res.CustomerID = customer.ID
 
 		thread, err := q.GetConversationThreadByCustomer(ctx, db.CreateConversationThreadParams{TenantID: channel.TenantID, CustomerID: customer.ID})
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -457,8 +503,8 @@ func (s *conversationService) storeInboundMessage(ctx context.Context, req inbou
 			State:      req.State,
 			Data:       req.Metadata,
 		})
-		out = msg
+		res.Message = msg
 		return err
 	})
-	return out, err
+	return res, err
 }
