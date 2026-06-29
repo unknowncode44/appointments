@@ -12,6 +12,8 @@ var (
 	ErrConflict     = errors.New("conflict")
 	ErrInvalidInput = errors.New("invalid input")
 	ErrForbidden    = errors.New("forbidden")
+	// ErrSlugTaken signals a duplicate tenant slug; maps to 409.
+	ErrSlugTaken = errors.New("slug already in use")
 )
 
 func Error(c *fiber.Ctx, err error) error {
@@ -22,7 +24,7 @@ func Error(c *fiber.Ctx, err error) error {
 	case errors.Is(err, ErrNotFound), errors.Is(err, pgx.ErrNoRows):
 		status = fiber.StatusNotFound
 		msg = "not found"
-	case errors.Is(err, ErrConflict):
+	case errors.Is(err, ErrConflict), errors.Is(err, ErrSlugTaken):
 		status = fiber.StatusConflict
 		msg = err.Error()
 	case errors.Is(err, ErrInvalidInput):
