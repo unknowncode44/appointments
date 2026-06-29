@@ -5,6 +5,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased] — `fix/tenant-slug-conflict-and-backfill`
+
+### Fixed
+
+- **Duplicate tenant slug returns `409`, not `500`.**
+  `POST`/`PUT /api/v1/tenants` with a slug that's already taken now maps the
+  Postgres unique-violation on `tenants_slug_idx` to a clean
+  `409 Conflict` (`{"error":"slug already in use"}`) instead of a generic
+  `500`. `tenants` only has the slug unique constraint, so the mapping is
+  unambiguous.
+- **Hardened slug backfill in migration `000004` (fresh installs only).**
+  Same-base collisions now derive their suffix from the tenant id
+  (`left(id::text, 8)`) instead of a per-base counter, so a generated slug can
+  no longer collide with a tenant literally named e.g. "Base 2" and break the
+  `CREATE UNIQUE INDEX`. _Note:_ `000004` already ran on prod, so golang-migrate
+  will not re-apply it there — this only affects new/fresh databases.
+
+---
+
 ## [Unreleased] — `feat/fase2-public-booking`
 
 ### Added
