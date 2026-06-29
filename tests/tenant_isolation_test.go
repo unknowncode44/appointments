@@ -353,7 +353,7 @@ func TestTenantIsolation_GetConversationThread(t *testing.T) {
 
 	svc := services.NewConversationService(&stubWorkflowRepo{
 		thread: db.ConversationThread{ID: threadID, TenantID: tenantA},
-	})
+	}, nil)
 
 	t.Run("cross-tenant returns ErrNotFound", func(t *testing.T) {
 		_, err := svc.GetThread(context.Background(), threadID, &tenantB)
@@ -448,7 +448,7 @@ func TestTenantIsolation_StoreMessage(t *testing.T) {
 
 	svc := services.NewConversationService(&stubWorkflowRepo{
 		customer: db.Customer{ID: customerID, TenantID: tenantA},
-	})
+	}, nil)
 	req := dto.ConversationMessageRequest{
 		TenantID:   tenantA,
 		CustomerID: customerID,

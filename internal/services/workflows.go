@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -11,6 +12,7 @@ import (
 	"github.com/unknowncode44/appointments/internal/api/dto"
 	"github.com/unknowncode44/appointments/internal/api/response"
 	db "github.com/unknowncode44/appointments/internal/db/sqlc"
+	"github.com/unknowncode44/appointments/internal/platform/evolution"
 	"github.com/unknowncode44/appointments/internal/platform/pagination"
 	"github.com/unknowncode44/appointments/internal/repositories"
 )
@@ -29,6 +31,7 @@ type ConversationService interface {
 	StoreMessage(context.Context, dto.ConversationMessageRequest, *uuid.UUID) (dto.ConversationMessageResponse, error)
 	ProcessInboundMessage(context.Context, dto.InboundMessageRequest) (dto.ConversationMessageResponse, error)
 	ProcessEvolutionWebhook(context.Context, dto.EvolutionWebhookRequest, []byte) (dto.EvolutionWebhookResult, error)
+	SendWhatsAppText(context.Context, db.TenantChannel, uuid.UUID, string, string) error
 }
 
 type appointmentService struct {
@@ -36,15 +39,19 @@ type appointmentService struct {
 }
 
 type conversationService struct {
-	repo repositories.WorkflowRepository
+	repo   repositories.WorkflowRepository
+	sender evolution.Client
 }
 
 func NewAppointmentService(repo repositories.WorkflowRepository) AppointmentService {
 	return &appointmentService{repo: repo}
 }
 
-func NewConversationService(repo repositories.WorkflowRepository) ConversationService {
-	return &conversationService{repo: repo}
+// NewConversationService wires the conversation/bot service. The Evolution client
+// is used by the bot to send outbound WhatsApp replies; it may be nil in contexts
+// that never send (e.g. read-only thread listing in tests).
+func NewConversationService(repo repositories.WorkflowRepository, sender evolution.Client) ConversationService {
+	return &conversationService{repo: repo, sender: sender}
 }
 
 // ── Appointment service ───────────────────────────────────────────────────────
@@ -507,4 +514,59 @@ func (s *conversationService) storeInboundMessage(ctx context.Context, req inbou
 		return err
 	})
 	return res, err
+}
+
+// SendWhatsAppText sends a WhatsApp text reply through the channel's Evolution
+// instance. It always persists an outbound_messages row and a conversation
+// message (direction "out") first, then calls Evolution with the per-instance
+// key. An Evolution failure marks the outbound row "failed" and is logged, but
+// never crashes the conversation flow.
+func (s *conversationService) SendWhatsAppText(ctx context.Context, channel db.TenantChannel, customerID uuid.UUID, to, text string) error {
+	var outboundID uuid.UUID
+	err := s.repo.Store().ExecTx(ctx, func(q *db.Queries) error {
+		ob, err := q.CreateOutboundMessage(ctx, db.CreateOutboundMessageParams{
+			TenantID:   channel.TenantID,
+			CustomerID: uuid.NullUUID{UUID: customerID, Valid: customerID != uuid.Nil},
+			ChannelID:  uuid.NullUUID{UUID: channel.ID, Valid: true},
+			Message:    text,
+			Status:     "pending",
+		})
+		if err != nil {
+			return err
+		}
+		outboundID = ob.ID
+
+		thread, err := q.GetConversationThreadByCustomer(ctx, db.CreateConversationThreadParams{TenantID: channel.TenantID, CustomerID: customerID})
+		if errors.Is(err, pgx.ErrNoRows) {
+			thread, err = q.CreateConversationThread(ctx, db.CreateConversationThreadParams{TenantID: channel.TenantID, CustomerID: customerID})
+		}
+		if err != nil {
+			return err
+		}
+		_, err = q.CreateConversationMessage(ctx, db.CreateConversationMessageParams{
+			ThreadID:  thread.ID,
+			Direction: "out",
+			Message:   text,
+			Metadata:  []byte(`{}`),
+		})
+		return err
+	})
+	if err != nil {
+		return err
+	}
+
+	// Call Evolution outside the persistence tx. A send failure is logged and the
+	// outbound row is marked failed, but the conversation flow continues.
+	if s.sender == nil {
+		return nil
+	}
+	status := "sent"
+	if sendErr := s.sender.SendText(ctx, channel.ExternalID, channel.ExternalKey.String, to, text); sendErr != nil {
+		status = "failed"
+		log.Printf("whatsapp send failed (tenant=%s channel=%s): %v", channel.TenantID, channel.ID, sendErr)
+	}
+	if _, uerr := s.repo.Store().UpdateOutboundMessageStatus(ctx, db.UpdateOutboundMessageStatusParams{ID: outboundID, Status: status}); uerr != nil {
+		log.Printf("whatsapp outbound status update failed (id=%s): %v", outboundID, uerr)
+	}
+	return nil
 }

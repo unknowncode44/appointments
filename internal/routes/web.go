@@ -5,6 +5,7 @@ import (
 	"github.com/unknowncode44/appointments/internal/api"
 	"github.com/unknowncode44/appointments/internal/api/handlers"
 	"github.com/unknowncode44/appointments/internal/api/middleware"
+	"github.com/unknowncode44/appointments/internal/platform/evolution"
 	"github.com/unknowncode44/appointments/internal/repositories"
 	"github.com/unknowncode44/appointments/internal/services"
 )
@@ -37,7 +38,7 @@ func SetupRoutes(server *api.Server) error {
 	adminHandler := handlers.NewAdminMVPHandler(services.NewAdminService(adminRepo))
 	schedulingHandler := handlers.NewSchedulingMVPHandler(services.NewSchedulingService(schedulingRepo))
 	appointmentHandler := handlers.NewAppointmentMVPHandler(services.NewAppointmentService(workflowRepo))
-	conversationHandler := handlers.NewConversationMVPHandler(services.NewConversationService(workflowRepo))
+	conversationHandler := handlers.NewConversationMVPHandler(services.NewConversationService(workflowRepo, evolution.NewClient(server.Config.EvoAPIURL)))
 
 	// ── WhatsApp proxy (tenantUser only) ───────────────────────────────────
 	whatsappHandler := handlers.NewWhatsappHandler(server.Store, server.Config)
