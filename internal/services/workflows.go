@@ -41,6 +41,7 @@ type appointmentService struct {
 type conversationService struct {
 	repo   repositories.WorkflowRepository
 	sender evolution.Client
+	bot    *bot
 }
 
 func NewAppointmentService(repo repositories.WorkflowRepository) AppointmentService {
@@ -51,7 +52,11 @@ func NewAppointmentService(repo repositories.WorkflowRepository) AppointmentServ
 // is used by the bot to send outbound WhatsApp replies; it may be nil in contexts
 // that never send (e.g. read-only thread listing in tests).
 func NewConversationService(repo repositories.WorkflowRepository, sender evolution.Client) ConversationService {
-	return &conversationService{repo: repo, sender: sender}
+	return &conversationService{
+		repo:   repo,
+		sender: sender,
+		bot:    newBot(storeBotRepo{store: repo.Store()}),
+	}
 }
 
 // ── Appointment service ───────────────────────────────────────────────────────
@@ -342,7 +347,6 @@ func (s *conversationService) ProcessInboundMessage(ctx context.Context, req dto
 		Source:             source,
 		Metadata:           metadata,
 		LogPayload:         metadata,
-		State:              "inbound_message_received",
 	})
 	return mapMessage(res.Message), err
 }
@@ -385,7 +389,6 @@ func (s *conversationService) ProcessEvolutionWebhook(ctx context.Context, req d
 		Source:             "evolution",
 		Metadata:           metadata,
 		LogPayload:         raw,
-		State:              "webhook_received",
 	})
 	if err != nil {
 		return dto.EvolutionWebhookResult{}, err
@@ -400,7 +403,58 @@ func (s *conversationService) ProcessEvolutionWebhook(ctx context.Context, req d
 		return out, nil
 	}
 	out.CustomerID = &res.CustomerID
+
+	// Drive the booking FSM: load prior state, advance one step, persist the new
+	// state, and send the reply. Ignore messages from us (fromMe) to avoid loops.
+	if req.Data.Key.FromMe {
+		return out, nil
+	}
+	step, reply, serr := s.runBotStep(ctx, res, message)
+	if serr != nil {
+		return dto.EvolutionWebhookResult{}, serr
+	}
+	out.CurrentStep = step
+	if reply != "" {
+		// Send failures are logged inside SendWhatsAppText and must not fail the
+		// webhook — the state is already persisted.
+		_ = s.SendWhatsAppText(ctx, res.Channel, res.CustomerID, externalCustomer, reply)
+	}
 	return out, nil
+}
+
+// runBotStep advances the conversational FSM for a freshly stored inbound message
+// and persists the resulting state. It returns the new step and the reply text.
+func (s *conversationService) runBotStep(ctx context.Context, res inboundResult, message string) (string, string, error) {
+	var data botData
+	if len(res.PriorState.Data) > 0 {
+		// A malformed/legacy payload simply starts a fresh conversation.
+		_ = json.Unmarshal(res.PriorState.Data, &data)
+	}
+
+	output, err := s.bot.Handle(ctx, botInput{
+		TenantID:   res.TenantID,
+		CustomerID: res.CustomerID,
+		Step:       res.PriorState.State,
+		Data:       data,
+		Text:       message,
+	})
+	if err != nil {
+		return "", "", err
+	}
+
+	newData, err := json.Marshal(output.Data)
+	if err != nil {
+		return "", "", err
+	}
+	if _, err := s.repo.Store().UpsertConversationState(ctx, db.UpsertConversationStateParams{
+		TenantID:   res.TenantID,
+		CustomerID: res.CustomerID,
+		State:      output.Step,
+		Data:       newData,
+	}); err != nil {
+		return "", "", err
+	}
+	return output.Step, output.Reply, nil
 }
 
 type inboundMessage struct {
@@ -411,7 +465,6 @@ type inboundMessage struct {
 	Source             string
 	Metadata           []byte
 	LogPayload         []byte
-	State              string
 }
 
 // inboundResult carries the outcome of storing an inbound message: the stored
@@ -422,6 +475,7 @@ type inboundResult struct {
 	Channel    db.TenantChannel
 	TenantID   uuid.UUID
 	CustomerID uuid.UUID
+	PriorState db.ConversationState
 	Idempotent bool
 }
 
@@ -486,6 +540,14 @@ func (s *conversationService) storeInboundMessage(ctx context.Context, req inbou
 		}
 		res.CustomerID = customer.ID
 
+		// Capture the prior FSM state before storing the new message. The bot owns
+		// conversation_state, so this helper reads it but never overwrites it.
+		state, err := q.GetConversationState(ctx, channel.TenantID, customer.ID)
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		}
+		res.PriorState = state
+
 		thread, err := q.GetConversationThreadByCustomer(ctx, db.CreateConversationThreadParams{TenantID: channel.TenantID, CustomerID: customer.ID})
 		if errors.Is(err, pgx.ErrNoRows) {
 			thread, err = q.CreateConversationThread(ctx, db.CreateConversationThreadParams{TenantID: channel.TenantID, CustomerID: customer.ID})
@@ -503,15 +565,8 @@ func (s *conversationService) storeInboundMessage(ctx context.Context, req inbou
 		if err != nil {
 			return err
 		}
-
-		_, err = q.UpsertConversationState(ctx, db.UpsertConversationStateParams{
-			TenantID:   channel.TenantID,
-			CustomerID: customer.ID,
-			State:      req.State,
-			Data:       req.Metadata,
-		})
 		res.Message = msg
-		return err
+		return nil
 	})
 	return res, err
 }
