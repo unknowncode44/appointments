@@ -1166,15 +1166,53 @@ Logs out of WhatsApp. The EVO instance is kept alive so the user can reconnect b
 
 ---
 
-## 13. Webhooks — public (no auth)
+## 13. Webhooks — public, HMAC-signed (no JWT)
 
 ### POST `/api/v1/webhooks/evolution`
 
-Receives incoming events from the Evolution API (WhatsApp). This endpoint is called by EVO API, not by the frontend.
+Single entry point for incoming WhatsApp messages from the Evolution API. Called
+by EVO API, not by the frontend. The endpoint is public (no JWT) but **every
+request must be HMAC-signed**; the tenant is derived from the WhatsApp instance
+in the payload and is never taken from the request body.
 
-**Request body** — Evolution API v2 payload (handled internally).
+**Signature.** Send header `X-Webhook-Signature` = HMAC-SHA256 of the **raw request
+body**, hex-encoded, keyed by the shared `WEBHOOK_SIGNING_SECRET`. An optional
+`sha256=` prefix is accepted. A missing, malformed, or invalid signature — or a
+server with no secret configured — returns `401`. (Fail-closed.)
 
-**Response `202`** — no body.
+**Request body** — Evolution API v2 payload (handled internally). The inbound
+message id (`data.key.id`) is used for idempotency: a redelivered message is a
+no-op.
+
+**Behaviour.** On a new message the server resolves the tenant + customer from the
+instance, stores the inbound message, advances the booking conversation one step
+(see the bot flow below), and sends the reply back through the same Evolution
+instance. Messages flagged `fromMe` are ignored.
+
+**Response `202`** — JSON:
+
+```json
+{
+  "processed": true,
+  "idempotent": false,
+  "tenant_id": "…",
+  "customer_id": "…",
+  "current_step": "choose_slot"
+}
+```
+
+`processed` is `true` when the message was newly handled; `idempotent` is `true`
+for a duplicate (in which case `customer_id`/`current_step` may be omitted).
+
+**Bot flow (server-side).** The conversation is a tenant-scoped state machine over
+`conversation_state`: `greeting → choose_service → choose_provider` (skipped when
+the tenant has a single provider; offers a "cualquier profesional" option with
+several) `→ choose_date → choose_slot → confirm → booked`. Menus are
+number-based. Confirming books the slot via the shared booking core in a
+transaction; if the slot was taken in the meantime the bot replies that the time
+is no longer available and re-offers that day's slots. Sending *hola*/*menu*
+restarts the flow. All replies are delivered via Evolution and persisted as
+outbound messages; no public send endpoint is exposed.
 
 ---
 

@@ -5,6 +5,45 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased] — `feat/whatsapp-bot-backend`
+
+### Added
+
+- **WhatsApp booking bot — fully server-side.** The public Evolution webhook is
+  now the single entry point for a complete booking conversation. The tenant is
+  derived from the WhatsApp instance; nothing tenant-scoped is trusted from
+  input, and there is no global integration/service key.
+  - **HMAC-signed webhook.** `POST /api/v1/webhooks/evolution` now requires an
+    `X-Webhook-Signature` header (HMAC-SHA256 of the raw body, keyed by the new
+    `WEBHOOK_SIGNING_SECRET`). Fail-closed: missing/invalid signature, or no
+    configured secret, → `401`. The route stays public (no JWT).
+  - **Idempotency.** Inbound messages are de-duplicated by the Evolution message
+    id (`data.key.id`) via a new `inbound_message_dedup` table with a unique
+    `(tenant_id, external_message_id)` index. A redelivered message is a no-op.
+  - **JSON response.** The webhook returns
+    `{ processed, idempotent, tenant_id, customer_id, current_step }` instead of
+    a bare `202`.
+  - **Conversational FSM.** A tenant-scoped state machine over
+    `conversation_state` drives `greeting → choose_service → choose_provider
+    (optional) → choose_date → choose_slot → confirm → booked`. Availability is
+    provider-time (not filtered by service), consistent with the rest of the app.
+    Confirming books via the shared `bookSlot` core in a transaction; a taken
+    slot replies "ese horario se ocupó" and re-offers slots.
+  - **Outbound sender.** An internal `SendWhatsAppText` persists an
+    `outbound_messages` row and an outbound `conversation_messages` row, then
+    sends via a new `internal/platform/evolution` client using the per-instance
+    key. Evolution failures are logged and marked `failed` without breaking the
+    flow. No public send endpoint is exposed.
+
+### Changed
+
+- `conversation_state` is now a true upsert keyed by `(tenant_id, customer_id)`
+  (migration `000006` adds the unique index after de-duping existing rows). The
+  bot is the sole owner of conversation state; inbound storage no longer
+  overwrites it.
+
+---
+
 ## [Unreleased] — `fix/tenant-slug-conflict-and-backfill`
 
 ### Fixed
